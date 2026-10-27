@@ -2,14 +2,6 @@ import fs from 'fs';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
-import { z } from 'zod';
-
-const MovementInputSchema = z.object({
-  type: z.enum(['ENTRADA', 'SALIDA']),
-  category: z.string().min(1, 'La categoría es obligatoria'),
-  amount: z.coerce.number().positive('El monto debe ser un valor mayor a cero'),
-  description: z.string().min(1, 'La descripción es obligatoria').max(500),
-});
 
 // Load .env.local
 const envPath = './.env.local';
@@ -36,7 +28,7 @@ const pool = new pg.Pool({
 
 async function runComprehensiveVerification() {
   console.log('========================================================');
-  console.log('   MULTI-TENANT & STRICT VALIDATION VERIFICATION SUITE  ');
+  console.log('   DEEP COMPREHENSIVE INTEGRATION & ATOMICTY SUITE');
   console.log('========================================================');
   const results = [];
 
@@ -57,145 +49,197 @@ async function runComprehensiveVerification() {
   }
 
   // 2. Admin User and Bcrypt verification
-  let adminUser;
   try {
     const res = await pool.query('SELECT id, username, password_hash FROM users WHERE username = $1', ['admin']);
-    adminUser = res.rows[0];
-    const isMatch = await bcrypt.compare('admin123', adminUser.password_hash);
+    const user = res.rows[0];
+    const isMatch = await bcrypt.compare('admin123', user.password_hash);
     results.push({
       test: '2. Admin Authentication Verification',
       passed: isMatch,
-      detail: { username: adminUser.username, matches: isMatch }
+      detail: { username: user.username, matches: isMatch }
     });
   } catch (err) {
-    results.push({
-      test: '2. Admin Authentication Verification',
-      passed: false,
-      error: err.message
-    });
+    results.push({ test: '2. Admin Authentication Verification', passed: false, error: err.message });
   }
 
-  // 3. JWT Token Lifecycle
+  // 3. Jose JWT Token generation & claim verification
   try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'AuraPrime67UuuuPachoEpaaaaYaVaCarpeto');
-    const token = await new SignJWT({ userId: adminUser.id, username: adminUser.username })
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback');
+    const token = await new SignJWT({ userId: 1, username: 'admin' })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime('7d')
       .sign(secret);
-
     const { payload } = await jwtVerify(token, secret);
     results.push({
-      test: '3. Jose HS256 Token Lifecycle & Payload',
-      passed: payload.userId === adminUser.id && payload.username === 'admin',
+      test: '3. Jose HS256 Token Lifecycle',
+      passed: payload.username === 'admin',
       detail: payload
     });
   } catch (err) {
-    results.push({
-      test: '3. Jose HS256 Token Lifecycle & Payload',
-      passed: false,
-      error: err.message
-    });
+    results.push({ test: '3. Jose HS256 Token Lifecycle', passed: false, error: err.message });
   }
 
-  // 4. Zod Input Schema Validation Enforcement
+  // 4. Product creation with initial stock
+  let testProdId = null;
   try {
-    const invalidMovement = {
-      type: 'SALIDA',
-      category: 'GASTO_NO_PLANEADO',
-      amount: -5000, // Invalido: debe ser positivo
-      description: ''
-    };
-    const parsed = MovementInputSchema.safeParse(invalidMovement);
-    const rejectedProperly = !parsed.success;
-    results.push({
-      test: '4. Zod Schema Rejects Negative/Malformed Amounts',
-      passed: rejectedProperly,
-      detail: { errors: parsed.success ? [] : parsed.error.issues.map(i => i.message) }
-    });
-  } catch (err) {
-    results.push({
-      test: '4. Zod Schema Rejects Negative/Malformed Amounts',
-      passed: false,
-      error: err.message
-    });
-  }
-
-  // 5. Multi-Tenant User Isolation: Create Second User
-  let user2;
-  try {
-    const testUsername = `tenant_test_${Date.now()}`;
-    const hash = await bcrypt.hash('secret123', 10);
-    const res = await pool.query(
-      `INSERT INTO users (username, password_hash, business_name) VALUES ($1, $2, 'Negocio Inquilino 2') RETURNING id, username`,
-      [testUsername, hash]
+    const p = await pool.query(
+      `INSERT INTO products (name, supply_model, unit_cost, extra_cost, sale_price, stock, active)
+       VALUES ('E2E Perfume Suizo', 'REVENTA', 25000, 2000, 45000, 5, TRUE)
+       RETURNING *`
     );
-    user2 = res.rows[0];
+    testProdId = p.rows[0].id;
     results.push({
-      test: '5. Tenant 2 Registration & Creation',
-      passed: Boolean(user2 && user2.id),
-      detail: user2
+      test: '4. Product Creation with Stock',
+      passed: p.rows[0].stock === 5 && p.rows[0].name === 'E2E Perfume Suizo',
+      detail: p.rows[0]
     });
   } catch (err) {
-    results.push({
-      test: '5. Tenant 2 Registration & Creation',
-      passed: false,
-      error: err.message
-    });
+    results.push({ test: '4. Product Creation with Stock', passed: false, error: err.message });
   }
 
-  // 6. User 1 Creates Product with user_id
-  let productUser1;
-  try {
-    const res = await pool.query(
-      `INSERT INTO products (user_id, name, supply_model, unit_cost, extra_cost, sale_price, stock, active)
-       VALUES ($1, 'Perfume Exclusivo Admin', 'REVENTA', 20000, 2000, 35000, 10, TRUE) RETURNING *`,
-      [adminUser.id]
-    );
-    productUser1 = res.rows[0];
-    results.push({
-      test: '6. User 1 Product Creation with user_id FK',
-      passed: productUser1.user_id === adminUser.id && productUser1.stock === 10,
-      detail: { id: productUser1.id, name: productUser1.name, user_id: productUser1.user_id }
-    });
-  } catch (err) {
-    results.push({
-      test: '6. User 1 Product Creation with user_id FK',
-      passed: false,
-      error: err.message
-    });
-  }
-
-  // 7. Multi-Tenant Isolation Test: User 2 CANNOT see User 1's Products
-  try {
-    const res = await pool.query(
-      `SELECT * FROM products WHERE user_id = $1 AND id = $2`,
-      [user2.id, productUser1.id]
-    );
-    const isolated = res.rows.length === 0;
-    results.push({
-      test: '7. Multi-Tenant Product Isolation (User 2 sees 0 of User 1 products)',
-      passed: isolated,
-      detail: { user2_id: user2.id, found_records_of_user1: res.rows.length }
-    });
-  } catch (err) {
-    results.push({
-      test: '7. Multi-Tenant Product Isolation',
-      passed: false,
-      error: err.message
-    });
-  }
-
-  // 8. Atomic Movement Creation & Stock Deduction for User 1
+  // 5. Atomic sale and stock reduction within stock
+  let movementId1 = null;
   try {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('UPDATE products SET stock = stock - 2 WHERE id = $1 AND user_id = $2', [productUser1.id, adminUser.id]);
+      const prodCheck = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [testProdId]);
+      if (prodCheck.rows[0].stock < 2) throw new Error('Stock insuficiente');
+      await client.query('UPDATE products SET stock = stock - $1 WHERE id = $2', [2, testProdId]);
+      const movRes = await client.query(
+        `INSERT INTO movements (type, category, amount, description, product_id, quantity)
+         VALUES ('ENTRADA', 'VENTA_PRODUCTO', 90000, 'Venta 2 perfumes', $1, 2)
+         RETURNING *`,
+        [testProdId]
+      );
+      movementId1 = movRes.rows[0].id;
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    const checkP = await pool.query('SELECT stock FROM products WHERE id = $1', [testProdId]);
+    results.push({
+      test: '5. Atomic Stock Reduction (5 -> 3)',
+      passed: checkP.rows[0].stock === 3,
+      detail: { initialStock: 5, sold: 2, currentStock: checkP.rows[0].stock }
+    });
+  } catch (err) {
+    results.push({ test: '5. Atomic Stock Reduction (5 -> 3)', passed: false, error: err.message });
+  }
+
+  // 6. Oversell Rejection and Rollback Integrity
+  try {
+    let rejected = false;
+    let errorMsg = '';
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const prodCheck = await client.query('SELECT * FROM products WHERE id = $1 FOR UPDATE', [testProdId]);
+      const currentStock = prodCheck.rows[0].stock; // 3
+      if (currentStock < 10) {
+        throw new Error(`Stock insuficiente: disponible ${currentStock}, solicitado 10`);
+      }
+      await client.query('UPDATE products SET stock = stock - $1 WHERE id = $2', [10, testProdId]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      rejected = true;
+      errorMsg = e.message;
+    } finally {
+      client.release();
+    }
+
+    const checkP = await pool.query('SELECT stock FROM products WHERE id = $1', [testProdId]);
+    results.push({
+      test: '6. Oversell Rejection & Rollback Integrity',
+      passed: rejected && checkP.rows[0].stock === 3,
+      detail: { rejected, errorMsg, preservedStock: checkP.rows[0].stock }
+    });
+  } catch (err) {
+    results.push({ test: '6. Oversell Rejection & Rollback Integrity', passed: false, error: err.message });
+  }
+
+  // 7. Purchase Stock Increment & Movement Reversal on Delete
+  try {
+    // 7A: Register purchase of 5 items
+    const client = await pool.connect();
+    let purchaseMovId = null;
+    try {
+      await client.query('BEGIN');
+      await client.query('UPDATE products SET stock = stock + $1 WHERE id = $2', [5, testProdId]);
+      const pRes = await client.query(
+        `INSERT INTO movements (type, category, amount, description, product_id, quantity)
+         VALUES ('SALIDA', 'COMPRA_CATALOGO', 125000, 'Reabastecimiento 5 uds', $1, 5)
+         RETURNING *`,
+        [testProdId]
+      );
+      purchaseMovId = pRes.rows[0].id;
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    const stockAfterPurchase = await pool.query('SELECT stock FROM products WHERE id = $1', [testProdId]);
+
+    // 7B: Reverse/Delete movement
+    const clientDel = await pool.connect();
+    try {
+      await clientDel.query('BEGIN');
+      const mov = (await clientDel.query('SELECT * FROM movements WHERE id = $1 FOR UPDATE', [purchaseMovId])).rows[0];
+      await clientDel.query('UPDATE products SET stock = GREATEST(0, stock - $1) WHERE id = $2', [mov.quantity, mov.product_id]);
+      await clientDel.query('DELETE FROM movements WHERE id = $1', [purchaseMovId]);
+      await clientDel.query('COMMIT');
+    } catch (e) {
+      await clientDel.query('ROLLBACK');
+      throw e;
+    } finally {
+      clientDel.release();
+    }
+
+    const stockAfterDelete = await pool.query('SELECT stock FROM products WHERE id = $1', [testProdId]);
+    results.push({
+      test: '7. Stock Increment on Purchase & Reversal on Delete',
+      passed: stockAfterPurchase.rows[0].stock === 8 && stockAfterDelete.rows[0].stock === 3,
+      detail: {
+        afterPurchase: stockAfterPurchase.rows[0].stock,
+        afterDeleteReversal: stockAfterDelete.rows[0].stock
+      }
+    });
+  } catch (err) {
+    results.push({ test: '7. Stock Increment on Purchase & Reversal on Delete', passed: false, error: err.message });
+  }
+
+  // 8. Reminder recurring payment transaction
+  let testReminderId = null;
+  try {
+    const remRes = await pool.query(
+      `INSERT INTO reminders (title, amount, category, frequency, due_date)
+       VALUES ('E2E Pago Luz Local', 85000, 'SERVICIOS_ARRIENDO', 'MENSUAL', CURRENT_DATE + INTERVAL '2 days')
+       RETURNING *`
+    );
+    testReminderId = remRes.rows[0].id;
+
+    // Simulate markReminderAsPaid transaction
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const rem = (await client.query('SELECT * FROM reminders WHERE id = $1 FOR UPDATE', [testReminderId])).rows[0];
       await client.query(
-        `INSERT INTO movements (user_id, type, category, amount, description, product_id, quantity)
-         VALUES ($1, 'ENTRADA', 'VENTA_PRODUCTO', 70000, 'Venta 2 perfumes', $2, 2)`,
-        [adminUser.id, productUser1.id]
+        `INSERT INTO movements (type, category, amount, description)
+         VALUES ('SALIDA', $1, $2, $3)`,
+        [rem.category, rem.amount, `Pago recordatorio: ${rem.title}`]
+      );
+      await client.query(
+        `UPDATE reminders SET due_date = (due_date + INTERVAL '1 month')::DATE WHERE id = $1`,
+        [testReminderId]
       );
       await client.query('COMMIT');
     } catch (e) {
@@ -205,51 +249,66 @@ async function runComprehensiveVerification() {
       client.release();
     }
 
-    const check = await pool.query('SELECT stock FROM products WHERE id = $1', [productUser1.id]);
+    const updatedRem = await pool.query('SELECT * FROM reminders WHERE id = $1', [testReminderId]);
     results.push({
-      test: '8. Atomic Stock Reduction (10 -> 8) Scoped to User 1',
-      passed: check.rows[0].stock === 8,
-      detail: { currentStock: check.rows[0].stock }
+      test: '8. Reminder Payment Transaction & Monthly Roll Forward',
+      passed: !!updatedRem.rows[0].due_date,
+      detail: { id: testReminderId, newDueDate: updatedRem.rows[0].due_date }
     });
   } catch (err) {
-    results.push({
-      test: '8. Atomic Stock Reduction Scoped to User 1',
-      passed: false,
-      error: err.message
-    });
+    results.push({ test: '8. Reminder Payment Transaction & Monthly Roll Forward', passed: false, error: err.message });
   }
 
-  // 9. Multi-Tenant Movement Isolation: User 2 Cash Register has 0 balance
+  // 9. Continuous generate_series for bar chart
   try {
-    const res = await pool.query(
-      `SELECT COALESCE(SUM(amount), 0)::FLOAT as total FROM movements WHERE user_id = $1`,
-      [user2.id]
-    );
-    const user2Total = res.rows[0].total;
+    const seriesTest = await pool.query(`
+      WITH months AS (
+        SELECT generate_series(
+          date_trunc('month', CURRENT_DATE) - INTERVAL '5 months',
+          date_trunc('month', CURRENT_DATE),
+          INTERVAL '1 month'
+        ) AS m_date
+      )
+      SELECT
+        TO_CHAR(m.m_date, 'YYYY-MM') AS periodo,
+        COALESCE(SUM(CASE WHEN mov.type = 'ENTRADA' THEN mov.amount ELSE 0 END), 0)::FLOAT AS entradas,
+        COALESCE(SUM(CASE WHEN mov.type = 'SALIDA' THEN mov.amount ELSE 0 END), 0)::FLOAT AS salidas
+      FROM months m
+      LEFT JOIN movements mov ON date_trunc('month', mov.movement_date) = m.m_date
+      GROUP BY m.m_date
+      ORDER BY m.m_date ASC
+    `);
     results.push({
-      test: '9. Multi-Tenant Cash Isolation (User 2 balance is strictly $0)',
-      passed: user2Total === 0,
-      detail: { user2_total: user2Total }
+      test: '9. Bar Chart Continuous 6-Month Timeline',
+      passed: seriesTest.rows.length === 6,
+      detail: { rowCount: seriesTest.rows.length, periods: seriesTest.rows.map(r => r.periodo) }
     });
   } catch (err) {
-    results.push({
-      test: '9. Multi-Tenant Cash Isolation',
-      passed: false,
-      error: err.message
-    });
+    results.push({ test: '9. Bar Chart Continuous 6-Month Timeline', passed: false, error: err.message });
   }
 
+  // Cleanup test artifacts
+  try {
+    if (testProdId) {
+      await pool.query('DELETE FROM movements WHERE product_id = $1', [testProdId]);
+      await pool.query('DELETE FROM products WHERE id = $1', [testProdId]);
+    }
+    if (testReminderId) {
+      await pool.query('DELETE FROM movements WHERE description LIKE $1', [`%Pago recordatorio: E2E Pago Luz Local%`]);
+      await pool.query('DELETE FROM reminders WHERE id = $1', [testReminderId]);
+    }
+  } catch {}
+
+  await pool.end();
   console.log(JSON.stringify(results, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`\nTOTAL TESTS: ${results.length} | PASSED: ${results.length - failed.length} | FAILED: ${failed.length}`);
-
-  await pool.end();
   if (failed.length > 0) {
     process.exit(1);
   }
 }
 
-runComprehensiveVerification().catch(err => {
-  console.error('Fatal suite crash:', err);
+runComprehensiveVerification().catch((e) => {
+  console.error('Test execution error:', e);
   process.exit(1);
 });

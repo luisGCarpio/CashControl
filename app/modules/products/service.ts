@@ -1,30 +1,9 @@
 import { query } from '@/bd/connection';
-import { ProductInput } from '@/lib/schemas';
 
-export interface ProductMetricRow {
-  id: number;
-  user_id: number;
-  name: string;
-  supply_model: 'REVENTA' | 'PRODUCCION';
-  unit_cost: number;
-  extra_cost: number;
-  total_unit_cost: number;
-  sale_price: number;
-  unit_profit: number;
-  margin_percent: number;
-  stock: number;
-  active: boolean;
-  units_sold: number;
-  total_revenue: number;
-  direct_investment: number;
-}
-
-export async function getProductsWithMetrics(userId: number): Promise<ProductMetricRow[]> {
-  const res = await query<ProductMetricRow>(
-    `
+export async function getProductsWithMetrics() {
+  const res = await query(`
     SELECT 
       p.id,
-      p.user_id,
       p.name,
       p.supply_model,
       p.unit_cost::FLOAT,
@@ -42,57 +21,72 @@ export async function getProductsWithMetrics(userId: number): Promise<ProductMet
       COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' AND m.category = 'VENTA_PRODUCTO' THEN m.amount ELSE 0 END), 0)::FLOAT AS total_revenue,
       COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0)::FLOAT AS direct_investment
     FROM products p
-    LEFT JOIN movements m ON p.id = m.product_id AND m.user_id = $1
-    WHERE p.user_id = $1 AND p.active = TRUE
+    LEFT JOIN movements m ON p.id = m.product_id
+    WHERE p.active = TRUE
     GROUP BY p.id
     ORDER BY units_sold DESC, p.name ASC
-  `,
-    [userId]
-  );
+  `);
   return res.rows;
 }
 
-export async function createProduct(userId: number, data: ProductInput) {
+export async function createProduct(data: {
+  name: string;
+  supply_model: 'REVENTA' | 'PRODUCCION';
+  unit_cost: number;
+  extra_cost: number;
+  sale_price: number;
+  stock: number;
+}) {
+  const name = (data.name || '').trim();
+  if (!name) {
+    throw new Error('El nombre del producto es obligatorio.');
+  }
+
+  if (data.supply_model !== 'REVENTA' && data.supply_model !== 'PRODUCCION') {
+    throw new Error('El modelo de suministro debe ser REVENTA o PRODUCCION.');
+  }
+
+  const unitCost = Number(data.unit_cost) || 0;
+  const extraCost = Number(data.extra_cost) || 0;
+  const salePrice = Number(data.sale_price) || 0;
+  const stock = Math.max(0, Math.floor(Number(data.stock) || 0));
+
+  if (unitCost < 0 || extraCost < 0 || salePrice < 0) {
+    throw new Error('Los valores de costo y precio de venta no pueden ser negativos.');
+  }
+
   const res = await query(
     `
-    INSERT INTO products (user_id, name, supply_model, unit_cost, extra_cost, sale_price, stock, active)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+    INSERT INTO products (name, supply_model, unit_cost, extra_cost, sale_price, stock, active)
+    VALUES ($1, $2, $3, $4, $5, $6, TRUE)
     RETURNING *
   `,
-    [
-      userId,
-      data.name.trim(),
-      data.supply_model,
-      data.unit_cost,
-      data.extra_cost,
-      data.sale_price,
-      data.stock,
-    ]
+    [name, data.supply_model, unitCost, extraCost, salePrice, stock]
   );
   return res.rows[0];
 }
 
-export async function deactivateProduct(userId: number, productId: number) {
+export async function deactivateProduct(productId: number) {
   const res = await query(
-    `UPDATE products SET active = FALSE WHERE id = $1 AND user_id = $2 RETURNING id, name, active`,
-    [productId, userId]
+    `UPDATE products SET active = FALSE WHERE id = $1 RETURNING id, name, active`,
+    [productId]
   );
   if (res.rowCount === 0) {
-    throw new Error('Producto no encontrado o no autorizado.');
+    throw new Error('Producto no encontrado.');
   }
   return { ok: true, product: res.rows[0] };
 }
 
-export async function updateProductStock(userId: number, productId: number, newStock: number) {
+export async function updateProductStock(productId: number, newStock: number) {
   if (newStock < 0) {
     throw new Error('El stock no puede ser negativo.');
   }
   const res = await query(
-    `UPDATE products SET stock = $1 WHERE id = $2 AND user_id = $3 RETURNING id, name, stock`,
-    [newStock, productId, userId]
+    `UPDATE products SET stock = $1 WHERE id = $2 RETURNING id, name, stock`,
+    [newStock, productId]
   );
   if (res.rowCount === 0) {
-    throw new Error('Producto no encontrado o no autorizado.');
+    throw new Error('Producto no encontrado.');
   }
   return res.rows[0];
 }
