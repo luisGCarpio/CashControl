@@ -21,10 +21,10 @@ CREATE TABLE products (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(120) NOT NULL,
     supply_model VARCHAR(20) NOT NULL CHECK (supply_model IN ('REVENTA', 'PRODUCCION')),
-    unit_cost NUMERIC(12, 2) NOT NULL DEFAULT 0,
-    extra_cost NUMERIC(12, 2) NOT NULL DEFAULT 0,
-    sale_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
-    stock INTEGER NOT NULL DEFAULT 0,
+    unit_cost NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (unit_cost >= 0),
+    extra_cost NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (extra_cost >= 0),
+    sale_price NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (sale_price >= 0),
+    stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -40,7 +40,11 @@ CREATE TABLE movements (
     product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
     quantity INTEGER DEFAULT 1 CHECK (quantity > 0),
     is_unplanned BOOLEAN DEFAULT FALSE,
-    movement_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    movement_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT check_movement_type_category CHECK (
+        (type = 'ENTRADA' AND category IN ('VENTA_PRODUCTO', 'APORTE_CAPITAL', 'OTRO_INGRESO')) OR
+        (type = 'SALIDA' AND category IN ('GASTO_GENERAL', 'COMPRA_CATALOGO', 'MATERIA_PRIMA', 'SERVICIOS_ARRIENDO', 'GASTO_NO_PLANEADO', 'RETIRO_PERSONAL'))
+    )
 );
 
 -- 4. Tabla de Recordatorios de Pago (aislados por user_id)

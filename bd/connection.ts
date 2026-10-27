@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 
 declare global {
   // Evita múltiples conexiones en desarrollo con Hot Reload
@@ -28,12 +28,13 @@ export const pool =
     ssl: {
       rejectUnauthorized: false, // Requerido por Neon
     },
-    max: 10,
+    max: process.env.NODE_ENV === 'production' ? 3 : 10,
+    connectionTimeoutMillis: 5000,
+    idleTimeoutMillis: 30000,
   });
 
-if (process.env.NODE_ENV !== 'production') {
-  global.pgPool = pool;
-}
+// Asignación incondicional para reutilizar el pool en entornos serverless y desarrollo
+global.pgPool = pool;
 
 export async function query<T extends QueryResultRow = any>(
   text: string,

@@ -1,4 +1,4 @@
-import { query } from '@/bd/connection';
+import { query, withTransaction } from '@/bd/connection';
 import { ProductInput } from '@/lib/schemas';
 
 export interface ProductMetricRow {
@@ -84,15 +84,25 @@ export async function deactivateProduct(userId: number, productId: number) {
 }
 
 export async function updateProductStock(userId: number, productId: number, newStock: number) {
-  if (newStock < 0) {
-    throw new Error('El stock no puede ser negativo.');
+  if (!Number.isInteger(newStock) || newStock < 0) {
+    throw new Error('El stock debe ser un número entero mayor o igual a cero.');
   }
-  const res = await query(
-    `UPDATE products SET stock = $1 WHERE id = $2 AND user_id = $3 RETURNING id, name, stock`,
-    [newStock, productId, userId]
-  );
-  if (res.rowCount === 0) {
-    throw new Error('Producto no encontrado o no autorizado.');
-  }
-  return res.rows[0];
+
+  return await withTransaction(async (client) => {
+    const checkRes = await client.query(
+      `SELECT id, name, stock FROM products WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      [productId, userId]
+    );
+
+    if (checkRes.rowCount === 0) {
+      throw new Error('Producto no encontrado o no autorizado.');
+    }
+
+    const res = await client.query(
+      `UPDATE products SET stock = $1 WHERE id = $2 AND user_id = $3 RETURNING id, name, stock`,
+      [newStock, productId, userId]
+    );
+
+    return res.rows[0];
+  });
 }

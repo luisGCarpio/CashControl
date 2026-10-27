@@ -3,9 +3,18 @@ import bcrypt from 'bcryptjs';
 import { query } from '@/bd/connection';
 import { createSessionToken, COOKIE_NAME } from '@/app/modules/auth/session';
 import { AuthRegisterSchema } from '@/lib/schemas';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
   try {
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || '127.0.0.1';
+    if (!checkRateLimit('register:' + clientIp, 5, 60_000).allowed) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes de registro. Intente nuevamente en un minuto.' },
+        { status: 429 }
+      );
+    }
+
     const rawBody = await req.json().catch(() => null);
     const validation = AuthRegisterSchema.safeParse(rawBody);
 
@@ -56,8 +65,9 @@ export async function POST(req: Request) {
 
     return response;
   } catch (error: any) {
+    console.error('Error al registrar usuario:', error);
     return NextResponse.json(
-      { error: error.message || 'Error interno al registrar usuario' },
+      { error: 'Error interno del servidor al procesar el registro.' },
       { status: 500 }
     );
   }

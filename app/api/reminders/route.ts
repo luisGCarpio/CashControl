@@ -4,10 +4,48 @@ import {
   createReminder,
   markReminderAsPaid,
   deleteReminder,
+  getActiveReminders,
 } from '@/app/modules/reminders/service';
-import { ReminderInputSchema } from '@/lib/schemas';
+import { ReminderInputSchema, MarkReminderPaidSchema, EntityIdSchema } from '@/lib/schemas';
 
 export const dynamic = 'force-dynamic';
+
+function sanitizeError(error: unknown, fallbackMessage: string): string {
+  if (error instanceof Error && error.message) {
+    const msg = error.message;
+    // Evitar filtrar detalles técnicos o internos de base de datos
+    if (
+      msg.includes('relation') ||
+      msg.includes('syntax error') ||
+      msg.includes('connect') ||
+      msg.includes('password') ||
+      msg.includes('pg_') ||
+      msg.includes('ECONN')
+    ) {
+      return fallbackMessage;
+    }
+    return msg;
+  }
+  return fallbackMessage;
+}
+
+export async function GET() {
+  try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const reminders = await getActiveReminders(session.userId);
+    return NextResponse.json(reminders);
+  } catch (error: any) {
+    console.error('Error al obtener recordatorios:', error);
+    return NextResponse.json(
+      { error: sanitizeError(error, 'Error al obtener recordatorios.') },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -29,8 +67,9 @@ export async function POST(req: Request) {
     const reminder = await createReminder(session.userId, validation.data);
     return NextResponse.json(reminder, { status: 201 });
   } catch (error: any) {
+    console.error('Error al programar el recordatorio:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al programar el recordatorio.' },
+      { error: sanitizeError(error, 'Error al programar el recordatorio.') },
       { status: 400 }
     );
   }
@@ -43,29 +82,22 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== 'object') {
+    const rawBody = await req.json().catch(() => null);
+    const validation = MarkReminderPaidSchema.safeParse(rawBody);
+
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'Cuerpo de solicitud inválido.' },
+        { error: validation.error.issues[0]?.message || 'Datos para marcar recordatorio inválidos.' },
         { status: 400 }
       );
     }
 
-    const { id, registerExpense } = body;
-    const reminderId = Number(id);
-
-    if (!reminderId || isNaN(reminderId) || reminderId <= 0) {
-      return NextResponse.json(
-        { error: 'ID de recordatorio inválido.' },
-        { status: 400 }
-      );
-    }
-
-    const res = await markReminderAsPaid(session.userId, reminderId, Boolean(registerExpense));
+    const res = await markReminderAsPaid(session.userId, validation.data.id, validation.data.registerExpense);
     return NextResponse.json(res);
   } catch (error: any) {
+    console.error('Error al procesar el pago del recordatorio:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al procesar el pago del recordatorio.' },
+      { error: sanitizeError(error, 'Error al procesar el pago del recordatorio.') },
       { status: 400 }
     );
   }
@@ -79,21 +111,21 @@ export async function DELETE(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const idParam = searchParams.get('id');
-    const id = Number(idParam);
+    const validation = EntityIdSchema.safeParse({ id: searchParams.get('id') });
 
-    if (!id || isNaN(id) || id <= 0) {
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'ID de recordatorio inválido para eliminación.' },
+        { error: validation.error.issues[0]?.message || 'ID de recordatorio inválido para eliminación.' },
         { status: 400 }
       );
     }
 
-    const res = await deleteReminder(session.userId, id);
+    const res = await deleteReminder(session.userId, validation.data.id);
     return NextResponse.json(res);
   } catch (error: any) {
+    console.error('Error al eliminar el recordatorio:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al eliminar el recordatorio.' },
+      { error: sanitizeError(error, 'Error al eliminar el recordatorio.') },
       { status: 400 }
     );
   }

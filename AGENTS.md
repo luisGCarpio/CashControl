@@ -64,3 +64,11 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## 5. Strict Branch & Production Protection
+
+**Never push directly to production (`main`). Keep production sacred.**
+
+- **No direct commits or pushes to `main`:** The `main` branch is strictly reserved for stable production releases. Under no circumstances should an agent push code directly to `main` or merge branches into `main` without explicit, unambiguous user instruction.
+- **`develop` is the active workspace:** All development, refactoring, security audits, and feature implementations must take place strictly on `develop` (or dedicated feature branches).
+- **Verification before release:** Code must never be promoted to production without passing the complete test suite (`npm test`), zero TypeScript compilation errors (`npx tsc --noEmit`), and final user approval.

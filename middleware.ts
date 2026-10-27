@@ -2,13 +2,19 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifySessionToken, COOKIE_NAME } from './app/modules/auth/session';
 
+const PUBLIC_AUTH_ROUTES = new Set([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/logout',
+]);
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Permitir recursos estáticos y favicon
+  // Permitir recursos estáticos y rutas de autenticación públicas
   if (
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/auth') ||
+    PUBLIC_AUTH_ROUTES.has(pathname) ||
     pathname === '/favicon.ico'
   ) {
     return NextResponse.next();

@@ -21,6 +21,7 @@ export async function getCashVision(userId: number) {
     SELECT
       COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE 0 END), 0)::FLOAT AS total_entradas,
       COALESCE(SUM(CASE WHEN type = 'SALIDA' THEN amount ELSE 0 END), 0)::FLOAT AS total_salidas,
+      COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE -amount END), 0)::NUMERIC(12, 2) AS disponible_actual,
       COALESCE(SUM(CASE WHEN type = 'ENTRADA' AND movement_date >= date_trunc('month', CURRENT_DATE) THEN amount ELSE 0 END), 0)::FLOAT AS entradas_mes,
       COALESCE(SUM(CASE WHEN type = 'SALIDA' AND movement_date >= date_trunc('month', CURRENT_DATE) THEN amount ELSE 0 END), 0)::FLOAT AS salidas_mes
     FROM movements
@@ -33,7 +34,7 @@ export async function getCashVision(userId: number) {
   return {
     total_entradas: row.total_entradas,
     total_salidas: row.total_salidas,
-    disponible_actual: row.total_entradas - row.total_salidas,
+    disponible_actual: Number(row.disponible_actual),
     entradas_mes: row.entradas_mes,
     salidas_mes: row.salidas_mes,
   };
@@ -135,6 +136,10 @@ export async function createMovement(userId: number, data: MovementInput) {
 
       const product = prodRes.rows[0];
 
+      if (product.active === false) {
+        throw new Error('El producto se encuentra desactivado y no admite nuevos movimientos.');
+      }
+
       // Verificación estricta de stock para ventas
       if (type === 'ENTRADA' && category === 'VENTA_PRODUCTO') {
         if (product.stock < quantity) {
@@ -211,8 +216,13 @@ export async function deleteMovement(userId: number, movementId: number) {
           mov.type === 'SALIDA' &&
           (mov.category === 'COMPRA_CATALOGO' || mov.category === 'MATERIA_PRIMA')
         ) {
+          if (prodRes.rows[0].stock < mov.quantity) {
+            throw new Error(
+              `No se puede anular la compra: el stock actual (${prodRes.rows[0].stock}) es menor a la cantidad registrada (${mov.quantity}), lo que indica que las unidades ya fueron vendidas.`
+            );
+          }
           await client.query(
-            `UPDATE products SET stock = GREATEST(0, stock - $1) WHERE id = $2 AND user_id = $3`,
+            `UPDATE products SET stock = stock - $1 WHERE id = $2 AND user_id = $3`,
             [mov.quantity, mov.product_id, userId]
           );
         }

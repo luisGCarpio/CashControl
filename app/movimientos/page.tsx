@@ -24,11 +24,13 @@ export default function MovimientosPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'TODOS' | 'ENTRADA' | 'SALIDA'>('TODOS');
   const [msg, setMsg] = useState('');
+  const [deletingMovement, setDeletingMovement] = useState<Movement | null>(null);
 
   // Formulario
   const [type, setType] = useState<'ENTRADA' | 'SALIDA'>('ENTRADA');
   const [category, setCategory] = useState('VENTA_PRODUCTO');
   const [amount, setAmount] = useState('');
+  const [quantity, setQuantity] = useState('1');
   const [description, setDescription] = useState('');
   const [productId, setProductId] = useState('');
 
@@ -61,15 +63,39 @@ export default function MovimientosPage() {
     loadData();
   }, []);
 
-  const handleProductSelect = (id: string) => {
+  const handleProductSelect = (id: string, currentQty: string = quantity, currentType: 'ENTRADA' | 'SALIDA' = type) => {
     setProductId(id);
     const prod = products.find((p) => String(p.id) === id);
     if (prod) {
-      const price = type === 'ENTRADA' ? prod.sale_price : prod.unit_cost;
-      setAmount(String(price));
-      if (!description) {
-        setDescription(`${type === 'ENTRADA' ? 'Venta' : 'Compra'}: ${prod.name}`);
+      const q = Math.max(1, parseInt(currentQty, 10) || 1);
+      const unitPrice = currentType === 'ENTRADA' ? prod.sale_price : prod.unit_cost;
+      setAmount(String(unitPrice * q));
+      if (!description || description.startsWith('Venta:') || description.startsWith('Compra:')) {
+        setDescription(`${currentType === 'ENTRADA' ? 'Venta' : 'Compra'}: ${prod.name}${q > 1 ? ` (x${q})` : ''}`);
       }
+    }
+  };
+
+  const handleQuantityChange = (newQty: string) => {
+    setQuantity(newQty);
+    const q = parseInt(newQty, 10);
+    if (productId && !isNaN(q) && q >= 1) {
+      const prod = products.find((p) => String(p.id) === productId);
+      if (prod) {
+        const unitPrice = type === 'ENTRADA' ? prod.sale_price : prod.unit_cost;
+        setAmount(String(unitPrice * q));
+        if (description.startsWith('Venta:') || description.startsWith('Compra:')) {
+          setDescription(`${type === 'ENTRADA' ? 'Venta' : 'Compra'}: ${prod.name}${q > 1 ? ` (x${q})` : ''}`);
+        }
+      }
+    }
+  };
+
+  const handleTypeChange = (newType: 'ENTRADA' | 'SALIDA') => {
+    setType(newType);
+    setCategory(newType === 'ENTRADA' ? 'VENTA_PRODUCTO' : 'GASTO_GENERAL');
+    if (productId) {
+      handleProductSelect(productId, quantity, newType);
     }
   };
 
@@ -85,6 +111,7 @@ export default function MovimientosPage() {
           type,
           category,
           amount: Number(amount),
+          quantity: Math.max(1, parseInt(quantity, 10) || 1),
           description,
           product_id: productId ? Number(productId) : null,
         }),
@@ -97,6 +124,7 @@ export default function MovimientosPage() {
 
       setMsg('Movimiento registrado exitosamente.');
       setAmount('');
+      setQuantity('1');
       setDescription('');
       setProductId('');
       loadData();
@@ -105,15 +133,19 @@ export default function MovimientosPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('¿Confirma que desea eliminar este movimiento de forma permanente?')) return;
+  const confirmDelete = async (id: number) => {
     try {
       const res = await fetch(`/api/movements?id=${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Error al eliminar');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Error al eliminar');
+      }
       setMsg('Movimiento eliminado correctamente.');
+      setDeletingMovement(null);
       loadData();
     } catch (err: any) {
       setMsg(err.message || 'Error al eliminar movimiento.');
+      setDeletingMovement(null);
     }
   };
 
@@ -149,14 +181,19 @@ export default function MovimientosPage() {
         </div>
       </header>
 
-      {/* Notificaciones */}
+      {/* Notificaciones accesibles */}
       {msg && (
-        <div className="border-2 border-black bg-black text-white p-3 font-mono text-xs uppercase flex items-center justify-between">
+        <div
+          role="status"
+          aria-live="polite"
+          className="border-2 border-black bg-black text-white p-3 font-mono text-xs uppercase flex items-center justify-between"
+        >
           <span>[SISTEMA]: {msg}</span>
           <button
             type="button"
             onClick={() => setMsg('')}
-            className="text-[10px] underline hover:text-neutral-300 font-mono uppercase"
+            aria-label="Cerrar notificación del sistema"
+            className="text-[10px] underline hover:text-neutral-300 font-mono uppercase cursor-pointer"
           >
             [CERRAR]
           </button>
@@ -164,7 +201,7 @@ export default function MovimientosPage() {
       )}
 
       {/* Resumen numérico en cajas rectangulares de datos */}
-      <section>
+      <section aria-label="Resumen de balance de caja">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="border-2 border-black bg-white p-4">
             <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-600 mb-1">
@@ -205,12 +242,12 @@ export default function MovimientosPage() {
       </section>
 
       {/* Formulario de Registro estructurado en un marco rectangular negro */}
-      <section className="border-2 border-black bg-white p-6">
+      <section className="border-2 border-black bg-white p-6" aria-labelledby="form-registro-heading">
         <div className="border-b border-black pb-3 mb-5">
           <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
             NUEVA TRANSACCIÓN
           </div>
-          <h2 className="text-sm font-mono font-bold uppercase tracking-widest text-black">
+          <h2 id="form-registro-heading" className="text-sm font-mono font-bold uppercase tracking-widest text-black">
             FORMULARIO DE REGISTRO // ASIGNACIÓN DE CAJA
           </h2>
         </div>
@@ -218,17 +255,17 @@ export default function MovimientosPage() {
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+              <label
+                htmlFor="mov-type"
+                className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
+              >
                 TIPO DE MOVIMIENTO:
               </label>
               <select
+                id="mov-type"
                 value={type}
-                onChange={(e) => {
-                  const newType = e.target.value as 'ENTRADA' | 'SALIDA';
-                  setType(newType);
-                  setCategory(newType === 'ENTRADA' ? 'VENTA_PRODUCTO' : 'GASTO_GENERAL');
-                }}
-                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+                onChange={(e) => handleTypeChange(e.target.value as 'ENTRADA' | 'SALIDA')}
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:bg-neutral-50"
               >
                 <option value="ENTRADA">ENTRADA (+ INGRESO DE DINERO)</option>
                 <option value="SALIDA">SALIDA (- EGRESO / GASTO)</option>
@@ -236,14 +273,18 @@ export default function MovimientosPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+              <label
+                htmlFor="mov-category"
+                className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
+              >
                 CATEGORÍA CONTABLE:
               </label>
               {type === 'ENTRADA' ? (
                 <select
+                  id="mov-category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:bg-neutral-50"
                 >
                   <option value="VENTA_PRODUCTO">VENTA DE PRODUCTO</option>
                   <option value="APORTE_CAPITAL">APORTE DE CAPITAL</option>
@@ -251,9 +292,10 @@ export default function MovimientosPage() {
                 </select>
               ) : (
                 <select
+                  id="mov-category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:bg-neutral-50"
                 >
                   <option value="GASTO_GENERAL">GASTO GENERAL</option>
                   <option value="COMPRA_CATALOGO">COMPRA DE MERCANCÍA</option>
@@ -266,16 +308,20 @@ export default function MovimientosPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
             {products.length > 0 && (
-              <div>
-                <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+              <div className="sm:col-span-6">
+                <label
+                  htmlFor="mov-product"
+                  className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
+                >
                   PRODUCTO RELACIONADO (OPCIONAL):
                 </label>
                 <select
+                  id="mov-product"
                   value={productId}
                   onChange={(e) => handleProductSelect(e.target.value)}
-                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:bg-neutral-50"
                 >
                   <option value="">-- NINGUNO (TRANSACCIÓN MANUAL) --</option>
                   {products.map((p) => (
@@ -287,11 +333,35 @@ export default function MovimientosPage() {
               </div>
             )}
 
-            <div className={products.length > 0 ? '' : 'sm:col-span-2'}>
-              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+            <div className={products.length > 0 ? 'sm:col-span-3' : 'sm:col-span-6'}>
+              <label
+                htmlFor="mov-quantity"
+                className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
+              >
+                CANTIDAD (UDS):
+              </label>
+              <input
+                id="mov-quantity"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="1"
+                value={quantity}
+                onChange={(e) => handleQuantityChange(e.target.value)}
+                required
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:bg-neutral-50"
+              />
+            </div>
+
+            <div className={products.length > 0 ? 'sm:col-span-3' : 'sm:col-span-6'}>
+              <label
+                htmlFor="mov-amount"
+                className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
+              >
                 MONTO ($ COP / NUMÉRICO):
               </label>
               <input
+                id="mov-amount"
                 type="number"
                 step="any"
                 min="0.01"
@@ -299,22 +369,26 @@ export default function MovimientosPage() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 required
-                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:bg-neutral-50"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+            <label
+              htmlFor="mov-description"
+              className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
+            >
               DESCRIPCIÓN / CONCEPTO:
             </label>
             <input
+              id="mov-description"
               type="text"
               placeholder="DETALLE DE LA OPERACIÓN..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required
-              className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:bg-neutral-50"
             />
           </div>
 
@@ -330,21 +404,23 @@ export default function MovimientosPage() {
       </section>
 
       {/* Historial con pestañas de filtro tipo tabs y tabla estricta */}
-      <section className="space-y-4">
+      <section className="space-y-4" aria-labelledby="historial-heading">
         <div className="border-b border-black pb-2 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
           <div>
             <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
               REGISTRO AUDITABLE
             </div>
-            <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
+            <h2 id="historial-heading" className="text-xs font-mono font-bold uppercase tracking-widest text-black">
               HISTORIAL DE TRANSACCIONES
             </h2>
           </div>
 
           {/* Botones de filtro rectangulares tipo tabs */}
-          <div className="flex gap-1">
+          <div className="flex gap-1" role="tablist" aria-label="Filtro de transacciones">
             <button
               type="button"
+              role="tab"
+              aria-selected={filter === 'TODOS'}
               onClick={() => setFilter('TODOS')}
               className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border-2 border-black transition-none cursor-pointer ${
                 filter === 'TODOS'
@@ -356,6 +432,8 @@ export default function MovimientosPage() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={filter === 'ENTRADA'}
               onClick={() => setFilter('ENTRADA')}
               className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border-2 border-black transition-none cursor-pointer ${
                 filter === 'ENTRADA'
@@ -367,6 +445,8 @@ export default function MovimientosPage() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={filter === 'SALIDA'}
               onClick={() => setFilter('SALIDA')}
               className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border-2 border-black transition-none cursor-pointer ${
                 filter === 'SALIDA'
@@ -392,22 +472,22 @@ export default function MovimientosPage() {
             <table className="w-full border-collapse text-left font-mono text-xs">
               <thead>
                 <tr className="bg-black text-white border-b-2 border-black">
-                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                  <th scope="col" className="p-3 border-r border-black font-bold uppercase tracking-wider">
                     FECHA
                   </th>
-                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                  <th scope="col" className="p-3 border-r border-black font-bold uppercase tracking-wider">
                     TIPO
                   </th>
-                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                  <th scope="col" className="p-3 border-r border-black font-bold uppercase tracking-wider">
                     CATEGORÍA
                   </th>
-                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                  <th scope="col" className="p-3 border-r border-black font-bold uppercase tracking-wider">
                     DESCRIPCIÓN
                   </th>
-                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider text-right">
+                  <th scope="col" className="p-3 border-r border-black font-bold uppercase tracking-wider text-right">
                     MONTO ($)
                   </th>
-                  <th className="p-3 font-bold uppercase tracking-wider text-center">
+                  <th scope="col" className="p-3 font-bold uppercase tracking-wider text-center">
                     ACCIÓN
                   </th>
                 </tr>
@@ -445,7 +525,8 @@ export default function MovimientosPage() {
                     <td className="p-3 text-center whitespace-nowrap">
                       <button
                         type="button"
-                        onClick={() => handleDelete(m.id)}
+                        onClick={() => setDeletingMovement(m)}
+                        aria-label={`Eliminar movimiento: ${m.description} por $${Math.round(m.amount).toLocaleString('es-CO')}`}
                         className="border border-black bg-white hover:bg-black hover:text-white transition-none px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer"
                       >
                         [X] ELIMINAR
@@ -458,6 +539,63 @@ export default function MovimientosPage() {
           </div>
         )}
       </section>
+
+      {/* Modal accesible de confirmación para eliminar movimiento */}
+      {deletingMovement && (
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 select-none"
+          onClick={() => setDeletingMovement(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-del-mov-title"
+            className="w-full max-w-md bg-white border-2 border-black p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b-2 border-black pb-2 flex items-center justify-between">
+              <h3 id="modal-del-mov-title" className="text-xs font-mono font-bold uppercase tracking-wider text-black m-0">
+                [ALERTA] // CONFIRMACIÓN DE ELIMINACIÓN
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeletingMovement(null)}
+                aria-label="Cerrar modal de confirmación"
+                className="border border-black bg-white px-2 py-0.5 text-[10px] font-mono font-bold uppercase hover:bg-black hover:text-white"
+              >
+                [X]
+              </button>
+            </div>
+
+            <p className="text-xs font-mono text-black uppercase leading-relaxed">
+              ¿CONFIRMA QUE DESEA ELIMINAR EL MOVIMIENTO: &quot;{deletingMovement.description}&quot; POR $
+              {Math.round(deletingMovement.amount).toLocaleString('es-CO')}?
+            </p>
+
+            <p className="text-[10px] font-mono text-neutral-600 uppercase">
+              ESTA ACCIÓN REVERTIRÁ EL REGISTRO DE MANERA PERMANENTE.
+            </p>
+
+            <div className="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingMovement(null)}
+                className="border-2 border-black bg-white text-black hover:bg-neutral-100 transition-none px-4 py-2 text-xs font-mono font-bold uppercase cursor-pointer"
+              >
+                [CANCELAR]
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmDelete(deletingMovement.id)}
+                aria-label={`Confirmar eliminación permanente del movimiento ${deletingMovement.description}`}
+                className="border-2 border-black bg-black text-white hover:bg-neutral-800 transition-none px-4 py-2 text-xs font-mono font-bold uppercase cursor-pointer"
+              >
+                [CONFIRMAR ELIMINACIÓN]
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
