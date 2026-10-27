@@ -1,60 +1,32 @@
 import { NextResponse } from 'next/server';
+import { getSession } from '@/app/modules/auth/session';
 import {
   createReminder,
   markReminderAsPaid,
   deleteReminder,
 } from '@/app/modules/reminders/service';
+import { ReminderInputSchema } from '@/lib/schemas';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== 'object') {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const rawBody = await req.json().catch(() => null);
+    const validation = ReminderInputSchema.safeParse(rawBody);
+
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'Cuerpo de solicitud inválido.' },
-        { status: 400 }
+        { error: validation.error.issues[0]?.message || 'Datos de recordatorio inválidos' },
+        { status: 422 }
       );
     }
 
-    const { title, amount, category, frequency, due_date } = body;
-
-    if (!title || typeof title !== 'string' || !title.trim()) {
-      return NextResponse.json(
-        { error: 'El concepto o título del recordatorio es obligatorio.' },
-        { status: 400 }
-      );
-    }
-
-    const validFrequencies = ['UNICO', 'SEMANAL', 'QUINCENAL', 'MENSUAL'];
-    if (!validFrequencies.includes(frequency)) {
-      return NextResponse.json(
-        { error: 'Frecuencia inválida (debe ser UNICO, SEMANAL, QUINCENAL o MENSUAL).' },
-        { status: 400 }
-      );
-    }
-
-    if (!due_date || isNaN(Date.parse(due_date))) {
-      return NextResponse.json(
-        { error: 'La fecha de vencimiento es inválida.' },
-        { status: 400 }
-      );
-    }
-
-    const parsedAmount = Number(amount) || 0;
-    if (parsedAmount < 0) {
-      return NextResponse.json(
-        { error: 'El monto no puede ser un valor negativo.' },
-        { status: 400 }
-      );
-    }
-
-    const reminder = await createReminder({
-      title: title.trim(),
-      amount: parsedAmount,
-      category: category ? category.trim() : 'SERVICIOS_ARRIENDO',
-      frequency,
-      due_date,
-    });
-
+    const reminder = await createReminder(session.userId, validation.data);
     return NextResponse.json(reminder, { status: 201 });
   } catch (error: any) {
     return NextResponse.json(
@@ -66,6 +38,11 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== 'object') {
       return NextResponse.json(
@@ -84,11 +61,11 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const res = await markReminderAsPaid(reminderId, Boolean(registerExpense));
+    const res = await markReminderAsPaid(session.userId, reminderId, Boolean(registerExpense));
     return NextResponse.json(res);
   } catch (error: any) {
     return NextResponse.json(
-      { error: error.message || 'Error al marcar recordatorio como pagado.' },
+      { error: error.message || 'Error al procesar el pago del recordatorio.' },
       { status: 400 }
     );
   }
@@ -96,6 +73,11 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const idParam = searchParams.get('id');
     const id = Number(idParam);
@@ -107,7 +89,7 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const res = await deleteReminder(id);
+    const res = await deleteReminder(session.userId, id);
     return NextResponse.json(res);
   } catch (error: any) {
     return NextResponse.json(

@@ -9,23 +9,26 @@ export interface SmartAlert {
   detail: string;
 }
 
-export async function generateSmartAlerts(): Promise<{
+export async function generateSmartAlerts(userId: number = 1): Promise<{
   alerts: SmartAlert[];
   productInsights: Record<string, any>;
 }> {
   const alerts: SmartAlert[] = [];
 
   // 1. ALERTA DE GASTOS: Comparación por categoría (Semana actual vs Semana pasada)
-  const weeklyComparison = await query(`
+  const weeklyComparison = await query(
+    `
     SELECT 
       category,
       COALESCE(SUM(CASE WHEN movement_date >= date_trunc('week', CURRENT_DATE) THEN amount ELSE 0 END), 0)::FLOAT AS current_week,
       COALESCE(SUM(CASE WHEN movement_date >= date_trunc('week', CURRENT_DATE) - INTERVAL '1 week' 
                          AND movement_date < date_trunc('week', CURRENT_DATE) THEN amount ELSE 0 END), 0)::FLOAT AS prev_week
     FROM movements
-    WHERE type = 'SALIDA'
+    WHERE type = 'SALIDA' AND user_id = $1
     GROUP BY category
-  `);
+  `,
+    [userId]
+  );
 
   for (const row of weeklyComparison.rows) {
     if (row.prev_week > 0 && row.current_week > row.prev_week * 1.15) {
@@ -49,178 +52,116 @@ export async function generateSmartAlerts(): Promise<{
   }
 
   // 2. ALERTA DE GASTOS: Comparación por categoría (Mes actual vs Mes pasado)
-  const monthlyComparison = await query(`
+  const monthlyComparison = await query(
+    `
     SELECT 
       category,
       COALESCE(SUM(CASE WHEN movement_date >= date_trunc('month', CURRENT_DATE) THEN amount ELSE 0 END), 0)::FLOAT AS current_month,
       COALESCE(SUM(CASE WHEN movement_date >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month' 
                          AND movement_date < date_trunc('month', CURRENT_DATE) THEN amount ELSE 0 END), 0)::FLOAT AS prev_month
     FROM movements
-    WHERE type = 'SALIDA'
+    WHERE type = 'SALIDA' AND user_id = $1
     GROUP BY category
-  `);
+  `,
+    [userId]
+  );
 
   for (const row of monthlyComparison.rows) {
-    if (row.prev_month > 0 && row.current_month > row.prev_month * 1.15) {
+    if (row.prev_month > 0 && row.current_month > row.prev_month * 1.2) {
       const pct = Math.round(((row.current_month - row.prev_month) / row.prev_month) * 100);
       alerts.push({
         id: `month-spike-${row.category}`,
         level: 'DANGER',
         scope: 'GASTOS',
-        title: `Superaste el gasto del mes pasado en ${row.category}`,
-        detail: `Este mes has gastado $${row.current_month.toLocaleString()} (+${pct}% frente a los $${row.prev_month.toLocaleString()} del mes anterior).`,
-      });
-    } else if (row.prev_month === 0 && row.current_month >= 100000) {
-      alerts.push({
-        id: `month-new-${row.category}`,
-        level: 'WARNING',
-        scope: 'GASTOS',
-        title: `Gasto no registrado el mes anterior en ${row.category}`,
-        detail: `Este mes llevas $${row.current_month.toLocaleString()} en ${row.category} (el mes pasado fue $0). Monitorea este rubro.`,
+        title: `Alerta Mensual: Salto de gasto en ${row.category}`,
+        detail: `En el mes corriente se han consumido $${row.current_month.toLocaleString()} en ${row.category}, superando en un ${pct}% el total del mes anterior ($${row.prev_month.toLocaleString()}).`,
       });
     }
   }
 
-  // 3. ALERTA DE GASTOS NO PLANEADOS / HORMIGA (Últimos 14 días)
-  const unplannedRes = await query(`
+  // 3. ALERTA DE GASTOS HORMIGA / NO PLANEADOS
+  const unplannedExpenses = await query(
+    `
     SELECT 
-      COUNT(*)::INT AS count,
-      COALESCE(SUM(amount), 0)::FLOAT AS total
+      COALESCE(SUM(amount), 0)::FLOAT AS total_unplanned_month,
+      COUNT(id)::INT AS count_unplanned
     FROM movements
-    WHERE type = 'SALIDA' 
+    WHERE type = 'SALIDA'
+      AND user_id = $1
       AND (is_unplanned = TRUE OR category = 'GASTO_NO_PLANEADO')
-      AND movement_date >= CURRENT_DATE - INTERVAL '14 days'
-  `);
+      AND movement_date >= date_trunc('month', CURRENT_DATE)
+  `,
+    [userId]
+  );
 
-  const unplanned = unplannedRes.rows[0];
-  if (unplanned.count >= 3 || unplanned.total >= 100000) {
+  const unplannedTotal = unplannedExpenses.rows[0]?.total_unplanned_month || 0;
+  const unplannedCount = unplannedExpenses.rows[0]?.count_unplanned || 0;
+
+  if (unplannedTotal >= 100000 || unplannedCount >= 4) {
     alerts.push({
-      id: 'unplanned-recurring',
-      level: 'DANGER',
+      id: 'unplanned-leak-month',
+      level: 'WARNING',
       scope: 'GASTOS',
-      title: `Fuga de dinero: ${unplanned.count} gastos no planeados recientes`,
-      detail: `En los últimos 14 días has registrado $${unplanned.total.toLocaleString()} en ${unplanned.count} salidas imprevistas. Controla estos gastos hormiga para no vaciar la caja.`,
+      title: 'Fuga de Dinero: Gastos no planeados recurrentes',
+      detail: `Llevas $${unplannedTotal.toLocaleString()} distribuidos en ${unplannedCount} salidas imprevistas este mes. Considera presupuestar una reserva de contingencia.`,
     });
   }
 
   // 4. INTELIGENCIA Y ALERTAS DE PRODUCTOS
-  const products = await getProductsWithMetrics();
+  const products = await getProductsWithMetrics(userId);
   const productInsights: Record<string, any> = {
     masVendido: null,
     menosVendido: null,
     masRentable: null,
     menosRentable: null,
-    enPerdida: [],
-    potencialMasDinero: [],
   };
 
   if (products.length > 0) {
-    // Más vendido y menos vendido (solo sobre productos con al menos 1 venta)
-    const withSales = products.filter((p) => p.units_sold > 0);
-    if (withSales.length > 0) {
-      const bySales = [...withSales].sort((a, b) => b.units_sold - a.units_sold);
-      productInsights.masVendido = bySales[0];
-      if (bySales.length > 1) {
-        productInsights.menosVendido = bySales[bySales.length - 1];
-      }
+    const sortedBySales = [...products].sort((a, b) => b.units_sold - a.units_sold);
+    const sortedByProfit = [...products].sort((a, b) => b.unit_profit - a.unit_profit);
+
+    if (sortedBySales[0]?.units_sold > 0) {
+      productInsights.masVendido = sortedBySales[0];
+      const withZeroOrLow = sortedBySales.filter((p) => p.units_sold === 0);
+      productInsights.menosVendido = withZeroOrLow[0] || sortedBySales[sortedBySales.length - 1];
     }
 
-    // Más rentable y menos rentable por ganancia neta por unidad
-    const byProfit = [...products].sort((a, b) => b.unit_profit - a.unit_profit);
-    productInsights.masRentable = byProfit[0];
-    if (byProfit.length > 1) {
-      productInsights.menosRentable = byProfit[byProfit.length - 1];
-    }
+    productInsights.masRentable = sortedByProfit[0];
+    productInsights.menosRentable = sortedByProfit[sortedByProfit.length - 1];
 
-    // ¿A cuál producto le pierdo dinero? (Venta por debajo del costo unitario real)
-    const lossMaking = products.filter((p) => p.unit_profit <= 0);
-    productInsights.enPerdida = lossMaking;
-
-    for (const lp of lossMaking) {
-      alerts.push({
-        id: `loss-unit-${lp.id}`,
-        level: 'DANGER',
-        scope: 'PRODUCTOS',
-        title: `Pierdes dinero con cada venta de "${lp.name}"`,
-        detail: `Producirlo/comprarlo cuesta $${lp.total_unit_cost.toLocaleString()} y lo vendes en $${lp.sale_price.toLocaleString()} (Resultado: -$${Math.abs(lp.unit_profit).toLocaleString()} por unidad). Ajusta su precio inmediatamente.`,
-      });
-    }
-
-    // Alerta de inventario retenido (inversión en stock pendiente por amortizar)
-    const slowMoving = products.filter(
-      (p) => p.direct_investment > p.total_revenue && p.stock > 0 && p.unit_profit > 0
-    );
-    for (const sm of slowMoving) {
-      const gap = sm.direct_investment - sm.total_revenue;
-      if (gap > 80000) {
+    for (const p of products) {
+      if (p.active && p.stock <= 2 && p.stock > 0) {
         alerts.push({
-          id: `inventory-slow-${sm.id}`,
+          id: `stock-low-${p.id}`,
           level: 'WARNING',
           scope: 'PRODUCTOS',
-          title: `Capital atrapado en inventario: "${sm.name}"`,
-          detail: `Has invertido $${sm.direct_investment.toLocaleString()} en mercancía y has recuperado $${sm.total_revenue.toLocaleString()} en ventas (Faltan $${gap.toLocaleString()} con ${sm.stock} unidades en bodega). Impulsa su rotación.`,
+          title: `Stock bajo en "${p.name}"`,
+          detail: `Solo quedan ${p.stock} unidad(es) física(s) disponible(s). Si es un producto con alta rotación, reabastécelo antes de que se agote.`,
+        });
+      } else if (p.active && p.stock === 0) {
+        alerts.push({
+          id: `stock-empty-${p.id}`,
+          level: 'DANGER',
+          scope: 'PRODUCTOS',
+          title: `Agotado: "${p.name}"`,
+          detail: `El producto está agotado en inventario. Las nuevas ventas están bloqueadas para evitar sobreventas.`,
         });
       }
-    }
 
-    // Alerta de STOCK CRÍTICO / AGOTADO
-    const outOfStock = products.filter((p) => p.stock === 0);
-    for (const o of outOfStock) {
-      alerts.push({
-        id: `stock-out-${o.id}`,
-        level: 'DANGER',
-        scope: 'PRODUCTOS',
-        title: `¡Agotado! "${o.name}" sin existencias`,
-        detail: `Este producto tiene 0 unidades en inventario. Reabastece o produce más para no perder clientes.`,
-      });
-    }
-
-    const lowStock = products.filter((p) => p.stock > 0 && p.stock <= 3);
-    for (const ls of lowStock) {
-      alerts.push({
-        id: `stock-low-${ls.id}`,
-        level: 'WARNING',
-        scope: 'PRODUCTOS',
-        title: `Stock bajo en "${ls.name}" (${ls.stock} uds restantes)`,
-        detail: `Quedan únicamente ${ls.stock} unidades disponibles en inventario.`,
-      });
-    }
-
-    // ¿A cuál producto sacarle más dinero?
-    // Productos con ventas significativas pero margen porcentual mejorable (< 32%)
-    // o productos mina de oro con excelente margen (> 45%)
-    const avgUnits =
-      products.reduce((acc, p) => acc + p.units_sold, 0) / products.length;
-    const highPotential = products.filter(
-      (p) =>
-        (p.units_sold >= Math.max(1, avgUnits) &&
-          p.margin_percent > 0 &&
-          p.margin_percent < 32) ||
-        (p.margin_percent >= 45 && p.units_sold > 0)
-    );
-    productInsights.potencialMasDinero = highPotential;
-
-    for (const hp of highPotential) {
-      if (hp.margin_percent < 32) {
-        const suggestedPrice = Math.ceil((hp.total_unit_cost * 1.45) / 100) * 100;
+      if (p.active && p.unit_profit <= 0) {
         alerts.push({
-          id: `opportunity-price-${hp.id}`,
-          level: 'INFO',
+          id: `profit-negative-${p.id}`,
+          level: 'DANGER',
           scope: 'PRODUCTOS',
-          title: `Oportunidad en "${hp.name}": Se vende bien pero deja poco margen (${hp.margin_percent}%)`,
-          detail: `Llevas ${hp.units_sold} uds vendidas. Si ajustas el precio a ~$${suggestedPrice.toLocaleString()} o negocias costos con proveedores, aumentarás tu ganancia neta.`,
-        });
-      } else {
-        alerts.push({
-          id: `opportunity-push-${hp.id}`,
-          level: 'SUCCESS',
-          scope: 'PRODUCTOS',
-          title: `Potencia "${hp.name}": Tu producto estrella (${hp.margin_percent}% de margen)`,
-          detail: `Cada unidad te deja $${hp.unit_profit.toLocaleString()} libres. Dale máxima visibilidad porque es tu mayor generador de beneficio.`,
+          title: `Margen en pérdida: "${p.name}"`,
+          detail: `El precio de venta ($${p.sale_price.toLocaleString()}) es menor o igual al costo total ($${p.total_unit_cost.toLocaleString()}). Pierdes dinero con cada unidad.`,
         });
       }
     }
   }
 
-  return { alerts, productInsights };
+  return {
+    alerts,
+    productInsights,
+  };
 }
