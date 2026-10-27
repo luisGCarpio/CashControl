@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import Navbar from './components/Navbar';
 
 export const metadata: Metadata = {
   title: 'Control de Caja Real | Entradas, Salidas y Alertas',
@@ -14,6 +15,7 @@ export default function RootLayout({
   return (
     <html lang="es" className="dark">
       <body className="bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-white">
+        <Navbar />
         {children}
       </body>
     </html>

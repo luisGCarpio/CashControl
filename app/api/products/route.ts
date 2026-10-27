@@ -1,5 +1,19 @@
 import { NextResponse } from 'next/server';
-import { createProduct, deactivateProduct, updateProductStock } from '@/app/modules/products/service';
+import { createProduct, deactivateProduct, updateProductStock, getProductsWithMetrics } from '@/app/modules/products/service';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  try {
+    const products = await getProductsWithMetrics();
+    return NextResponse.json(products);
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || 'Error al obtener productos.' },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: Request) {
   try {
