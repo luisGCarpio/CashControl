@@ -51,7 +51,7 @@ export default function MovimientosPage() {
       if (Array.isArray(dataMov)) setMovements(dataMov);
       if (Array.isArray(dataProd)) setProducts(dataProd);
     } catch {
-      setMsg('Error al cargar datos.');
+      setMsg('Error al cargar datos del servidor.');
     } finally {
       setLoading(false);
     }
@@ -92,10 +92,10 @@ export default function MovimientosPage() {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || 'Error al guardar');
+        throw new Error(err.error || 'Error al registrar movimiento');
       }
 
-      setMsg('Movimiento guardado con éxito.');
+      setMsg('Movimiento registrado exitosamente.');
       setAmount('');
       setDescription('');
       setProductId('');
@@ -106,14 +106,14 @@ export default function MovimientosPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('¿Seguro que deseas eliminar este movimiento?')) return;
+    if (!confirm('¿Confirma que desea eliminar este movimiento de forma permanente?')) return;
     try {
       const res = await fetch(`/api/movements?id=${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Error al eliminar');
-      setMsg('Movimiento eliminado.');
+      setMsg('Movimiento eliminado correctamente.');
       loadData();
     } catch (err: any) {
-      setMsg(err.message || 'Error al eliminar.');
+      setMsg(err.message || 'Error al eliminar movimiento.');
     }
   };
 
@@ -131,158 +131,331 @@ export default function MovimientosPage() {
   });
 
   return (
-    <main>
-      <h1>Movimientos de Caja</h1>
-      <p>Registra entradas (ventas, ingresos) y salidas (compras, gastos).</p>
+    <main className="space-y-8 py-4">
+      {/* Encabezado con línea negra */}
+      <header className="border-b-2 border-black pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+          <div>
+            <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
+              GESTIÓN DE FLUJO Y LIQUIDEZ
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-black uppercase">
+              MOVIMIENTOS // CONTROL DE CAJA
+            </h1>
+          </div>
+          <div className="text-[11px] font-mono text-neutral-600 uppercase tracking-wider">
+            TOTAL MOVIMIENTOS: {movements.length}
+          </div>
+        </div>
+      </header>
 
-      {msg && <p className="success">{msg}</p>}
+      {/* Notificaciones */}
+      {msg && (
+        <div className="border-2 border-black bg-black text-white p-3 font-mono text-xs uppercase flex items-center justify-between">
+          <span>[SISTEMA]: {msg}</span>
+          <button
+            type="button"
+            onClick={() => setMsg('')}
+            className="text-[10px] underline hover:text-neutral-300 font-mono uppercase"
+          >
+            [CERRAR]
+          </button>
+        </div>
+      )}
 
-      {/* Resumen numérico básico */}
+      {/* Resumen numérico en cajas rectangulares de datos */}
       <section>
-        <p>
-          <strong>Total Entradas:</strong> ${Math.round(entradasTotal).toLocaleString()} |{' '}
-          <strong>Total Salidas:</strong> ${Math.round(salidasTotal).toLocaleString()} |{' '}
-          <strong>Balance:</strong> ${Math.round(balance).toLocaleString()}
-        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="border-2 border-black bg-white p-4">
+            <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-600 mb-1">
+              RESUMEN // ENTRADAS
+            </div>
+            <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-black tabular-nums">
+              + $ {Math.round(entradasTotal).toLocaleString('es-CO')}
+            </div>
+            <div className="text-[10px] font-mono text-neutral-500 uppercase mt-1">
+              INGRESOS TOTALES
+            </div>
+          </div>
+
+          <div className="border-2 border-black bg-white p-4">
+            <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-600 mb-1">
+              RESUMEN // SALIDAS
+            </div>
+            <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-black tabular-nums">
+              - $ {Math.round(salidasTotal).toLocaleString('es-CO')}
+            </div>
+            <div className="text-[10px] font-mono text-neutral-500 uppercase mt-1">
+              GASTOS Y EGRESOS
+            </div>
+          </div>
+
+          <div className="border-2 border-black bg-white p-4">
+            <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-600 mb-1">
+              RESUMEN // BALANCE
+            </div>
+            <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-black tabular-nums">
+              $ {Math.round(balance).toLocaleString('es-CO')}
+            </div>
+            <div className="text-[10px] font-mono text-neutral-500 uppercase mt-1">
+              FLUJO NETO DISPONIBLE
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Formulario simple */}
-      <form onSubmit={handleCreate}>
-        <fieldset>
-          <legend>Registrar Nuevo Movimiento</legend>
-          <p>
-            <label>Tipo:</label>
-            <br />
-            <select
-              value={type}
-              onChange={(e) => {
-                const newType = e.target.value as 'ENTRADA' | 'SALIDA';
-                setType(newType);
-                setCategory(newType === 'ENTRADA' ? 'VENTA_PRODUCTO' : 'GASTO_GENERAL');
-              }}
-            >
-              <option value="ENTRADA">Entrada (+ Dinero)</option>
-              <option value="SALIDA">Salida (- Dinero)</option>
-            </select>
-          </p>
+      {/* Formulario de Registro estructurado en un marco rectangular negro */}
+      <section className="border-2 border-black bg-white p-6">
+        <div className="border-b border-black pb-3 mb-5">
+          <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
+            NUEVA TRANSACCIÓN
+          </div>
+          <h2 className="text-sm font-mono font-bold uppercase tracking-widest text-black">
+            FORMULARIO DE REGISTRO // ASIGNACIÓN DE CAJA
+          </h2>
+        </div>
 
-          <p>
-            <label>Categoría:</label>
-            <br />
-            {type === 'ENTRADA' ? (
-              <select value={category} onChange={(e) => setCategory(e.target.value)}>
-                <option value="VENTA_PRODUCTO">Venta de Producto</option>
-                <option value="APORTE_CAPITAL">Aporte de Capital</option>
-                <option value="OTRO_INGRESO">Otro Ingreso</option>
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                TIPO DE MOVIMIENTO:
+              </label>
+              <select
+                value={type}
+                onChange={(e) => {
+                  const newType = e.target.value as 'ENTRADA' | 'SALIDA';
+                  setType(newType);
+                  setCategory(newType === 'ENTRADA' ? 'VENTA_PRODUCTO' : 'GASTO_GENERAL');
+                }}
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              >
+                <option value="ENTRADA">ENTRADA (+ INGRESO DE DINERO)</option>
+                <option value="SALIDA">SALIDA (- EGRESO / GASTO)</option>
               </select>
-            ) : (
-              <select value={category} onChange={(e) => setCategory(e.target.value)}>
-                <option value="GASTO_GENERAL">Gasto General</option>
-                <option value="COMPRA_CATALOGO">Compra de Mercancía</option>
-                <option value="MATERIA_PRIMA">Materia Prima</option>
-                <option value="SERVICIOS_ARRIENDO">Servicios o Arriendo</option>
-                <option value="GASTO_NO_PLANEADO">Gasto Imprevisto</option>
-                <option value="RETIRO_PERSONAL">Retiro Personal</option>
-              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                CATEGORÍA CONTABLE:
+              </label>
+              {type === 'ENTRADA' ? (
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+                >
+                  <option value="VENTA_PRODUCTO">VENTA DE PRODUCTO</option>
+                  <option value="APORTE_CAPITAL">APORTE DE CAPITAL</option>
+                  <option value="OTRO_INGRESO">OTRO INGRESO</option>
+                </select>
+              ) : (
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+                >
+                  <option value="GASTO_GENERAL">GASTO GENERAL</option>
+                  <option value="COMPRA_CATALOGO">COMPRA DE MERCANCÍA</option>
+                  <option value="MATERIA_PRIMA">MATERIA PRIMA</option>
+                  <option value="SERVICIOS_ARRIENDO">SERVICIOS O ARRIENDO</option>
+                  <option value="GASTO_NO_PLANEADO">GASTO IMPREVISTO</option>
+                  <option value="RETIRO_PERSONAL">RETIRO PERSONAL</option>
+                </select>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {products.length > 0 && (
+              <div>
+                <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                  PRODUCTO RELACIONADO (OPCIONAL):
+                </label>
+                <select
+                  value={productId}
+                  onChange={(e) => handleProductSelect(e.target.value)}
+                  className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+                >
+                  <option value="">-- NINGUNO (TRANSACCIÓN MANUAL) --</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name.toUpperCase()} (P. VENTA: ${Math.round(p.sale_price)} | COSTO: ${Math.round(p.unit_cost)})
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
-          </p>
 
-          {products.length > 0 && (
-            <p>
-              <label>Producto Relacionado (Opcional):</label>
-              <br />
-              <select value={productId} onChange={(e) => handleProductSelect(e.target.value)}>
-                <option value="">-- Ninguno --</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </p>
-          )}
+            <div className={products.length > 0 ? '' : 'sm:col-span-2'}>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                MONTO ($ COP / NUMÉRICO):
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0.01"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              />
+            </div>
+          </div>
 
-          <p>
-            <label>Monto ($):</label>
-            <br />
-            <input
-              type="number"
-              step="any"
-              min="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-            />
-          </p>
-
-          <p>
-            <label>Descripción / Concepto:</label>
-            <br />
+          <div>
+            <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+              DESCRIPCIÓN / CONCEPTO:
+            </label>
             <input
               type="text"
+              placeholder="DETALLE DE LA OPERACIÓN..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               required
+              className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
             />
-          </p>
+          </div>
 
-          <p>
-            <button type="submit">Guardar Movimiento</button>
-          </p>
-        </fieldset>
-      </form>
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full border-2 border-black bg-black text-white hover:bg-white hover:text-black transition-none py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider rounded-none cursor-pointer"
+            >
+              [+] REGISTRAR MOVIMIENTO
+            </button>
+          </div>
+        </form>
+      </section>
 
-      {/* Filtro básico */}
-      <section>
-        <h2>Historial</h2>
-        <p>
-          Filtrar:{' '}
-          <button type="button" onClick={() => setFilter('TODOS')}>
-            Todos ({movements.length})
-          </button>{' '}
-          <button type="button" onClick={() => setFilter('ENTRADA')}>
-            Solo Entradas
-          </button>{' '}
-          <button type="button" onClick={() => setFilter('SALIDA')}>
-            Solo Salidas
-          </button>
-        </p>
+      {/* Historial con pestañas de filtro tipo tabs y tabla estricta */}
+      <section className="space-y-4">
+        <div className="border-b border-black pb-2 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
+              REGISTRO AUDITABLE
+            </div>
+            <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
+              HISTORIAL DE TRANSACCIONES
+            </h2>
+          </div>
+
+          {/* Botones de filtro rectangulares tipo tabs */}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setFilter('TODOS')}
+              className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border-2 border-black transition-none cursor-pointer ${
+                filter === 'TODOS'
+                  ? 'bg-black text-white'
+                  : 'bg-white text-black hover:bg-neutral-100'
+              }`}
+            >
+              [TODOS: {movements.length}]
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter('ENTRADA')}
+              className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border-2 border-black transition-none cursor-pointer ${
+                filter === 'ENTRADA'
+                  ? 'bg-black text-white'
+                  : 'bg-white text-black hover:bg-neutral-100'
+              }`}
+            >
+              [ENTRADAS]
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter('SALIDA')}
+              className={`px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider border-2 border-black transition-none cursor-pointer ${
+                filter === 'SALIDA'
+                  ? 'bg-black text-white'
+                  : 'bg-white text-black hover:bg-neutral-100'
+              }`}
+            >
+              [SALIDAS]
+            </button>
+          </div>
+        </div>
 
         {loading ? (
-          <p>Cargando movimientos...</p>
+          <div className="border-2 border-black p-8 text-center bg-white font-mono text-xs uppercase">
+            [...] CARGANDO MOVIMIENTOS...
+          </div>
         ) : listaFiltrada.length === 0 ? (
-          <p>No hay movimientos para mostrar.</p>
+          <div className="border-2 border-black p-8 text-center bg-white font-mono text-xs uppercase text-neutral-500">
+            NO HAY MOVIMIENTOS PARA EL FILTRO SELECCIONADO.
+          </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Tipo</th>
-                <th>Categoría</th>
-                <th>Descripción</th>
-                <th>Monto</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {listaFiltrada.map((m) => (
-                <tr key={m.id}>
-                  <td>{new Date(m.movement_date).toLocaleDateString()}</td>
-                  <td>{m.type}</td>
-                  <td>{m.category}</td>
-                  <td>{m.description}</td>
-                  <td>
-                    {m.type === 'ENTRADA' ? '+' : '-'}${Math.round(m.amount).toLocaleString()}
-                  </td>
-                  <td>
-                    <button type="button" onClick={() => handleDelete(m.id)}>
-                      Eliminar
-                    </button>
-                  </td>
+          <div className="border-2 border-black overflow-x-auto bg-white">
+            <table className="w-full border-collapse text-left font-mono text-xs">
+              <thead>
+                <tr className="bg-black text-white border-b-2 border-black">
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                    FECHA
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                    TIPO
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                    CATEGORÍA
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                    DESCRIPCIÓN
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider text-right">
+                    MONTO ($)
+                  </th>
+                  <th className="p-3 font-bold uppercase tracking-wider text-center">
+                    ACCIÓN
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-black">
+                {listaFiltrada.map((m) => (
+                  <tr
+                    key={m.id}
+                    className="hover:bg-neutral-100 transition-none border-b border-black last:border-b-0"
+                  >
+                    <td className="p-3 border-r border-black tabular-nums whitespace-nowrap">
+                      {new Date(m.movement_date).toLocaleDateString('es-CO')}
+                    </td>
+                    <td className="p-3 border-r border-black whitespace-nowrap">
+                      <span
+                        className={`inline-block px-2 py-0.5 border border-black text-[10px] font-bold tracking-wider ${
+                          m.type === 'ENTRADA'
+                            ? 'bg-white text-black'
+                            : 'bg-black text-white'
+                        }`}
+                      >
+                        {m.type}
+                      </span>
+                    </td>
+                    <td className="p-3 border-r border-black whitespace-nowrap text-[11px]">
+                      {m.category}
+                    </td>
+                    <td className="p-3 border-r border-black font-medium">
+                      {m.description}
+                    </td>
+                    <td className="p-3 border-r border-black text-right tabular-nums font-bold whitespace-nowrap">
+                      {m.type === 'ENTRADA' ? '+' : '-'} $
+                      {Math.round(m.amount).toLocaleString('es-CO')}
+                    </td>
+                    <td className="p-3 text-center whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(m.id)}
+                        className="border border-black bg-white hover:bg-black hover:text-white transition-none px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer"
+                      >
+                        [X] ELIMINAR
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </main>

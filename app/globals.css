@@ -1,56 +1,289 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #ffffff;
+  --text-primary: #000000;
+  --border-primary: #000000;
+  --border-muted: #222222;
+  --bg-secondary: #f7f7f7;
+}
+
+/* Regla estricta universal: 0px de redondeado en absolutamente todo */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+html,
 body {
-  font-family: sans-serif;
-  max-width: 800px;
-  margin: 20px auto;
-  padding: 0 10px;
-  line-height: 1.4;
-  color: #000;
-  background: #fff;
+  margin: 0;
+  padding: 0;
+  background-color: #ffffff;
+  color: #000000;
+  font-family: 'Geist Mono', 'JetBrains Mono', 'SF Mono', 'Segoe UI Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+  min-height: 100vh;
 }
 
-nav {
-  margin-bottom: 20px;
+/* Números tabulares globales */
+body, table, input, select, textarea, button, .tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Encabezados y Jerarquía Tipográfica */
+h1, h2, h3, h4, h5, h6 {
+  color: #000000;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  margin-top: 0;
+}
+
+h1 {
+  font-size: 1.625rem;
+  line-height: 1.2;
+  border-bottom: 2px solid #000000;
   padding-bottom: 10px;
-  border-bottom: 1px solid #ccc;
+  margin-bottom: 20px;
 }
 
-nav a {
-  margin-right: 15px;
+h2 {
+  font-size: 1.25rem;
+  line-height: 1.25;
+  border-bottom: 1px solid #000000;
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  margin-top: 24px;
 }
 
-table {
+h3 {
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  margin-bottom: 10px;
+  margin-top: 18px;
+}
+
+p {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+/* Botones interactivos con inversión brutalista */
+button,
+.btn,
+input[type="submit"],
+input[type="button"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #000000;
+  border-radius: 0 !important;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: none !important;
+  user-select: none;
+  text-decoration: none;
+}
+
+button:hover,
+.btn:hover,
+input[type="submit"]:hover,
+input[type="button"]:hover {
+  background-color: #000000;
+  color: #ffffff;
+}
+
+button:active,
+.btn:active,
+input[type="submit"]:active,
+input[type="button"]:active {
+  background-color: #000000;
+  color: #ffffff;
+}
+
+button:disabled,
+.btn:disabled,
+input[type="submit"]:disabled,
+input[type="button"]:disabled {
+  background-color: #ffffff;
+  color: #777777;
+  border-color: #777777;
+  cursor: not-allowed;
+}
+
+/* Formularios, campos y foco nítido sin resplandores */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+input[type="number"],
+input[type="date"],
+input[type="search"],
+select,
+textarea {
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #000000;
+  border-radius: 0 !important;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  outline: none;
   width: 100%;
-  border-collapse: collapse;
-  margin-top: 15px;
+  box-sizing: border-box;
+  transition: none !important;
 }
 
-th, td {
-  border: 1px solid #ccc;
-  padding: 6px 10px;
-  text-align: left;
-}
-
-th {
-  background: #f0f0f0;
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid #000000 !important;
+  outline-offset: -1px;
+  box-shadow: none !important;
 }
 
 fieldset {
-  margin: 15px 0;
-  padding: 10px;
-  border: 1px solid #ccc;
+  border: 1px solid #000000;
+  padding: 16px;
+  margin: 16px 0;
+  background-color: #ffffff;
 }
 
-input, select, button {
-  padding: 4px 8px;
-  margin: 3px 0;
+legend {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  background-color: #000000;
+  color: #ffffff;
+  border: 1px solid #000000;
 }
 
+label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #000000;
+  margin-bottom: 4px;
+  display: inline-block;
+}
+
+/* Tablas con cuadrícula geométrica visible */
+table {
+  width: 100%;
+  border-collapse: collapse !important;
+  border: 1px solid #000000;
+  margin: 16px 0;
+  background-color: #ffffff;
+}
+
+th,
+td {
+  border: 1px solid #000000;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 0.8125rem;
+}
+
+th {
+  background-color: #000000;
+  color: #ffffff;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+tr:hover td {
+  background-color: #f7f7f7;
+}
+
+/* Enlaces con estilo tipográfico */
+a {
+  color: #000000;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: none !important;
+}
+
+a:hover {
+  background-color: #000000;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+/* Alertas y Mensajes de Estado */
 .error {
-  color: red;
-  font-weight: bold;
+  color: #000000;
+  background-color: #ffffff;
+  border: 2px solid #000000;
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 14px 0;
+  display: block;
+}
+
+.error::before {
+  content: "[ALERTA / ERROR] ";
+  font-weight: 900;
 }
 
 .success {
-  color: green;
-  font-weight: bold;
+  color: #000000;
+  background-color: #ffffff;
+  border: 2px solid #000000;
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 14px 0;
+  display: block;
+}
+
+.success::before {
+  content: "[SISTEMA / OK] ";
+  font-weight: 900;
+}
+
+/* Scrollbars Monocromáticas Cuadradas */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #ffffff;
+  border-left: 1px solid #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #000000;
+  border-radius: 0 !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #333333;
 }

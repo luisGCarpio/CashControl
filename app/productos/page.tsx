@@ -39,7 +39,7 @@ export default function ProductosPage() {
         setProducts(data);
       }
     } catch {
-      setMsg('Error al cargar productos.');
+      setMsg('Error al conectar con la base de datos de productos.');
     } finally {
       setLoading(false);
     }
@@ -72,7 +72,7 @@ export default function ProductosPage() {
         throw new Error(err.error || 'Error al crear producto');
       }
 
-      setMsg(`Producto "${name}" creado exitosamente.`);
+      setMsg(`Producto "${name.toUpperCase()}" dado de alta con éxito.`);
       setName('');
       setUnitCost('');
       setExtraCost('0');
@@ -80,17 +80,17 @@ export default function ProductosPage() {
       setStock('0');
       loadProducts();
     } catch (err: any) {
-      setMsg(err.message || 'Error al guardar.');
+      setMsg(err.message || 'Error al guardar producto.');
     }
   };
 
   const handleStockChange = async (id: number, currentStock: number) => {
-    const input = prompt('Ingresa la nueva cantidad de stock:', String(currentStock));
+    const input = prompt('Ingresa la nueva cantidad exacta de stock:', String(currentStock));
     if (input === null) return;
 
     const newStock = Number(input);
     if (isNaN(newStock) || newStock < 0) {
-      alert('Cantidad inválida.');
+      alert('Cantidad inválida. Ingrese un valor numérico positivo.');
       return;
     }
 
@@ -101,170 +101,339 @@ export default function ProductosPage() {
         body: JSON.stringify({ id, stock: newStock }),
       });
 
-      if (!res.ok) throw new Error('Error al actualizar stock');
-      setMsg('Stock actualizado.');
+      if (!res.ok) throw new Error('Error al actualizar el inventario.');
+      setMsg('Nivel de stock actualizado correctamente.');
       loadProducts();
     } catch (err: any) {
-      setMsg(err.message || 'Error al actualizar.');
+      setMsg(err.message || 'Error al actualizar inventario.');
     }
   };
 
   const handleDeactivate = async (id: number, prodName: string) => {
-    if (!confirm(`¿Deseas retirar "${prodName}" del catálogo?`)) return;
+    if (!confirm(`¿Confirma el retiro del artículo "${prodName}" del catálogo activo?`)) return;
     try {
       const res = await fetch(`/api/products?id=${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Error al retirar producto');
-      setMsg('Producto retirado.');
+      if (!res.ok) throw new Error('Error al retirar producto del catálogo.');
+      setMsg(`Artículo "${prodName}" retirado exitosamente.`);
       loadProducts();
     } catch (err: any) {
-      setMsg(err.message || 'Error al retirar.');
+      setMsg(err.message || 'Error al retirar artículo.');
     }
   };
 
   const totalUnidades = products.reduce((acc, p) => acc + (p.stock || 0), 0);
+  const valorInventario = products.reduce(
+    (acc, p) => acc + (Number(p.unit_cost) + Number(p.extra_cost)) * Number(p.stock || 0),
+    0
+  );
 
   return (
-    <main>
-      <h1>Productos y Catálogo</h1>
-      <p>Administra los artículos de tu negocio, sus costos, precios y existencias.</p>
+    <main className="space-y-8 py-4">
+      {/* Encabezado */}
+      <header className="border-b-2 border-black pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+          <div>
+            <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
+              GESTIÓN DE INVENTARIO Y REFERENCIAS
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-black uppercase">
+              CATÁLOGO // CONTROL DE PRODUCTOS Y STOCK
+            </h1>
+          </div>
+          <div className="text-[11px] font-mono text-neutral-600 uppercase tracking-wider">
+            TOTAL REFERENCIAS: {products.length}
+          </div>
+        </div>
+      </header>
 
-      {msg && <p className="success">{msg}</p>}
+      {/* Notificaciones */}
+      {msg && (
+        <div className="border-2 border-black bg-black text-white p-3 font-mono text-xs uppercase flex items-center justify-between">
+          <span>[SISTEMA]: {msg}</span>
+          <button
+            type="button"
+            onClick={() => setMsg('')}
+            className="text-[10px] underline hover:text-neutral-300 font-mono uppercase"
+          >
+            [CERRAR]
+          </button>
+        </div>
+      )}
 
-      {/* Resumen básico */}
+      {/* Métricas en cajas rectangulares superiores */}
       <section>
-        <p>
-          <strong>Total Productos:</strong> {products.length} artículos |{' '}
-          <strong>Unidades Físicas en Stock:</strong> {totalUnidades} uds
-        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="border-2 border-black bg-white p-4">
+            <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-600 mb-1">
+              MÉTRICA // REFERENCIAS
+            </div>
+            <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-black tabular-nums">
+              {products.length} ARTÍCULOS
+            </div>
+            <div className="text-[10px] font-mono text-neutral-500 uppercase mt-1">
+              PRODUCTOS ACTIVOS EN CATÁLOGO
+            </div>
+          </div>
+
+          <div className="border-2 border-black bg-white p-4">
+            <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-600 mb-1">
+              MÉTRICA // EXISTENCIAS FÍSICAS
+            </div>
+            <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-black tabular-nums">
+              {totalUnidades} UNIDADES
+            </div>
+            <div className="text-[10px] font-mono text-neutral-500 uppercase mt-1">
+              STOCK TOTAL EN BODEGA
+            </div>
+          </div>
+
+          <div className="border-2 border-black bg-white p-4">
+            <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-600 mb-1">
+              MÉTRICA // CAPITAL EN INVENTARIO
+            </div>
+            <div className="text-xl sm:text-2xl font-mono font-bold tracking-tight text-black tabular-nums">
+              $ {Math.round(valorInventario).toLocaleString('es-CO')}
+            </div>
+            <div className="text-[10px] font-mono text-neutral-500 uppercase mt-1">
+              VALORIZACIÓN A COSTO BASE
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Formulario simple */}
-      <form onSubmit={handleCreate}>
-        <fieldset>
-          <legend>Crear Nuevo Producto</legend>
-          <p>
-            <label>Nombre del Producto:</label>
-            <br />
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </p>
+      {/* Formulario de alta de productos con marco negro nítido */}
+      <section className="border-2 border-black bg-white p-6">
+        <div className="border-b border-black pb-3 mb-5">
+          <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
+            CREACIÓN DE REFERENCIA
+          </div>
+          <h2 className="text-sm font-mono font-bold uppercase tracking-widest text-black">
+            FORMULARIO DE ALTA // NUEVO ARTÍCULO O INSUMO
+          </h2>
+        </div>
 
-          <p>
-            <label>Modelo:</label>
-            <br />
-            <select
-              value={supplyModel}
-              onChange={(e) => setSupplyModel(e.target.value as 'REVENTA' | 'PRODUCCION')}
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                NOMBRE DEL PRODUCTO / REFERENCIA:
+              </label>
+              <input
+                type="text"
+                placeholder="EJ. CAMISA DE LINO, CAFÉ ESPECIAL..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                MODELO OPERATIVO:
+              </label>
+              <select
+                value={supplyModel}
+                onChange={(e) => setSupplyModel(e.target.value as 'REVENTA' | 'PRODUCCION')}
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              >
+                <option value="REVENTA">REVENTA (COMPRA TERMINADO PARA DISTRIBUCIÓN)</option>
+                <option value="PRODUCCION">PRODUCCIÓN (ELABORACIÓN CON INSUMOS)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                COSTO BASE ($):
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                placeholder="0.00"
+                value={unitCost}
+                onChange={(e) => setUnitCost(e.target.value)}
+                required
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                COSTOS EXTRA ($):
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                placeholder="0.00"
+                value={extraCost}
+                onChange={(e) => setExtraCost(e.target.value)}
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                PRECIO DE VENTA ($):
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                placeholder="0.00"
+                value={salePrice}
+                onChange={(e) => setSalePrice(e.target.value)}
+                required
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black">
+                STOCK INICIAL:
+              </label>
+              <input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                required
+                className="w-full border-2 border-black bg-white px-3 py-2 text-xs font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full border-2 border-black bg-black text-white hover:bg-white hover:text-black transition-none py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider rounded-none cursor-pointer"
             >
-              <option value="REVENTA">Reventa (Comprar hecho para vender)</option>
-              <option value="PRODUCCION">Producción (Insumos o elaboración)</option>
-            </select>
-          </p>
+              [+] CREAR PRODUCTO
+            </button>
+          </div>
+        </form>
+      </section>
 
-          <p>
-            <label>Costo de Compra / Insumo ($):</label>
-            <br />
-            <input
-              type="number"
-              step="any"
-              min="0"
-              value={unitCost}
-              onChange={(e) => setUnitCost(e.target.value)}
-              required
-            />
-          </p>
+      {/* Tabla geométrica de productos con columnas claras y botones de acción rectangulares */}
+      <section className="space-y-4">
+        <div className="border-b border-black pb-2 flex items-center justify-between">
+          <div>
+            <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
+              LISTADO DISPONIBLE
+            </div>
+            <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
+              CATÁLOGO ACTUAL // INVENTARIO EN VIGENCIA
+            </h2>
+          </div>
+          <span className="text-[11px] font-mono text-neutral-600 uppercase">
+            REGISTROS: {products.length}
+          </span>
+        </div>
 
-          <p>
-            <label>Costo Extra (Empaque, flete) ($):</label>
-            <br />
-            <input
-              type="number"
-              step="any"
-              min="0"
-              value={extraCost}
-              onChange={(e) => setExtraCost(e.target.value)}
-            />
-          </p>
-
-          <p>
-            <label>Precio de Venta al Público ($):</label>
-            <br />
-            <input
-              type="number"
-              step="any"
-              min="0"
-              value={salePrice}
-              onChange={(e) => setSalePrice(e.target.value)}
-              required
-            />
-          </p>
-
-          <p>
-            <label>Stock Inicial (Unidades):</label>
-            <br />
-            <input
-              type="number"
-              min="0"
-              value={stock}
-              onChange={(e) => setStock(e.target.value)}
-              required
-            />
-          </p>
-
-          <p>
-            <button type="submit">Crear Producto</button>
-          </p>
-        </fieldset>
-      </form>
-
-      {/* Lista simple de productos */}
-      <section>
-        <h2>Catálogo Actual</h2>
         {loading ? (
-          <p>Cargando productos...</p>
+          <div className="border-2 border-black p-8 text-center bg-white font-mono text-xs uppercase">
+            [...] CARGANDO PRODUCTOS...
+          </div>
         ) : products.length === 0 ? (
-          <p>No tienes productos registrados aún.</p>
+          <div className="border-2 border-black p-8 text-center bg-white font-mono text-xs uppercase text-neutral-500">
+            NO EXISTEN PRODUCTOS EN EL CATÁLOGO ACTUALMENTE.
+          </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Modelo</th>
-                <th>Costo Total</th>
-                <th>Precio Venta</th>
-                <th>Stock</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((p) => {
-                const totalCost = Number(p.unit_cost) + Number(p.extra_cost);
-                return (
-                  <tr key={p.id}>
-                    <td>
-                      <strong>{p.name}</strong>
-                    </td>
-                    <td>{p.supply_model}</td>
-                    <td>${Math.round(totalCost).toLocaleString()}</td>
-                    <td>${Math.round(p.sale_price).toLocaleString()}</td>
-                    <td>{p.stock} unidades</td>
-                    <td>
-                      <button type="button" onClick={() => handleStockChange(p.id, p.stock)}>
-                        Cambiar Stock
-                      </button>{' '}
-                      <button type="button" onClick={() => handleDeactivate(p.id, p.name)}>
-                        Retirar
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="border-2 border-black overflow-x-auto bg-white">
+            <table className="w-full border-collapse text-left font-mono text-xs">
+              <thead>
+                <tr className="bg-black text-white border-b-2 border-black">
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                    ARTÍCULO
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider">
+                    MODELO
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider text-right">
+                    COSTO TOTAL
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider text-right">
+                    PRECIO VENTA
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider text-right">
+                    MARGEN EST.
+                  </th>
+                  <th className="p-3 border-r border-black font-bold uppercase tracking-wider text-center">
+                    STOCK
+                  </th>
+                  <th className="p-3 font-bold uppercase tracking-wider text-center">
+                    ACCIONES
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-black">
+                {products.map((p) => {
+                  const totalCost = Number(p.unit_cost) + Number(p.extra_cost);
+                  const margin = Number(p.sale_price) - totalCost;
+                  const marginPct =
+                    Number(p.sale_price) > 0
+                      ? Math.round((margin / Number(p.sale_price)) * 100)
+                      : 0;
+
+                  return (
+                    <tr
+                      key={p.id}
+                      className="hover:bg-neutral-100 transition-none border-b border-black last:border-b-0"
+                    >
+                      <td className="p-3 border-r border-black font-bold uppercase">
+                        {p.name}
+                      </td>
+                      <td className="p-3 border-r border-black text-[11px] whitespace-nowrap">
+                        <span className="inline-block px-1.5 py-0.5 border border-black bg-white text-black text-[10px]">
+                          {p.supply_model}
+                        </span>
+                      </td>
+                      <td className="p-3 border-r border-black text-right tabular-nums whitespace-nowrap">
+                        $ {Math.round(totalCost).toLocaleString('es-CO')}
+                      </td>
+                      <td className="p-3 border-r border-black text-right tabular-nums font-bold whitespace-nowrap">
+                        $ {Math.round(p.sale_price).toLocaleString('es-CO')}
+                      </td>
+                      <td className="p-3 border-r border-black text-right tabular-nums whitespace-nowrap text-[11px]">
+                        $ {Math.round(margin).toLocaleString('es-CO')} ({marginPct}%)
+                      </td>
+                      <td className="p-3 border-r border-black text-center tabular-nums whitespace-nowrap">
+                        <span
+                          className={`inline-block px-2 py-0.5 border border-black font-bold text-xs ${
+                            p.stock <= 2 ? 'bg-black text-white' : 'bg-white text-black'
+                          }`}
+                        >
+                          {p.stock} UDS
+                        </span>
+                      </td>
+                      <td className="p-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleStockChange(p.id, p.stock)}
+                            className="border border-black bg-white hover:bg-black hover:text-white transition-none px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer"
+                          >
+                            [STOCK]
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeactivate(p.id, p.name)}
+                            className="border border-black bg-white hover:bg-black hover:text-white transition-none px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider cursor-pointer"
+                          >
+                            [RETIRAR]
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </main>

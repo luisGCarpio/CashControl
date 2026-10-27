@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import Navbar from './components/Navbar';
+import LayoutShell from './components/LayoutShell';
 
 export const metadata: Metadata = {
-  title: 'Control de Caja Real',
-  description: 'Gestión de flujo de dinero, inventario y movimientos.',
+  title: 'PULSO // CAJA - Sistema Monocromático de Flujo',
+  description: 'Arquitectura de gestión de caja real, inventario y movimientos financieros.',
 };
 
 export default function RootLayout({
@@ -14,9 +14,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body>
-        <Navbar />
-        {children}
+      <body className="bg-white text-black min-h-screen antialiased selection:bg-black selection:text-white">
+        <LayoutShell>{children}</LayoutShell>
       </body>
     </html>
   );
