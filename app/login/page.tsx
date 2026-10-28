@@ -1,98 +1,112 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Lock, User, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
 
-    if (res.ok) {
-      window.location.href = '/';
-    } else {
-      const data = await res.json();
-      setError(data.error || 'Error al iniciar sesión');
+      if (res.ok) {
+        window.location.href = '/';
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Usuario o contraseña incorrectos.');
+      }
+    } catch {
+      setError('Error al conectar con el servidor.');
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl">
-        <div className="mb-6 text-center">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto mb-3 text-emerald-400">
-            <Lock size={24} />
+    <div className="min-h-[80vh] flex items-center justify-center py-12 px-4">
+      <div className="w-full max-w-md bg-white border-2 border-black p-8 rounded-none">
+        {/* Encabezado */}
+        <div className="border-b-2 border-black pb-4 mb-6">
+          <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
+            TERMINAL DE AUTENTICACIÓN
           </div>
-          <h1 className="text-2xl font-bold">Control de Caja Real</h1>
-          <p className="text-sm text-slate-400 mt-1">
-            Acceso exclusivo de administrador del negocio
-          </p>
+          <h1 className="text-xl font-bold font-mono tracking-tight text-black uppercase">
+            ACCESO AL SISTEMA // AUTENTICACIÓN
+          </h1>
         </div>
 
+        <p className="text-xs font-mono text-neutral-700 uppercase mb-6 tracking-wide">
+          INGRESE SUS CREDENCIALES PARA CONTINUAR
+        </p>
+
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-            {error}
+          <div className="border-2 border-black bg-black text-white p-3 font-mono text-xs uppercase mb-6">
+            [ERROR] {error}
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="block text-xs uppercase tracking-wider text-slate-400 mb-1">
-              Usuario
+            <label
+              htmlFor="username"
+              className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
+            >
+              USUARIO:
             </label>
-            <div className="relative">
-              <User className="absolute left-3 top-3 text-slate-500" size={18} />
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              className="w-full border-2 border-black bg-white px-3 py-2 text-sm font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              placeholder="admin"
+            />
           </div>
 
           <div>
-            <label className="block text-xs uppercase tracking-wider text-slate-400 mb-1">
-              Contraseña
+            <label
+              htmlFor="password"
+              className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
+            >
+              CONTRASEÑA:
             </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-3 text-slate-500" size={18} />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Por defecto: admin123"
-                required
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full border-2 border-black bg-white px-3 py-2 text-sm font-mono rounded-none focus:outline-none focus:bg-neutral-50"
+              placeholder="••••••••"
+            />
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2.5 rounded-lg transition flex items-center justify-center gap-2"
-          >
-            {loading ? 'Verificando...' : 'Entrar al Negocio'}
-            <ArrowRight size={18} />
-          </button>
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full border-2 border-black bg-black text-white hover:bg-white hover:text-black transition-none py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider rounded-none cursor-pointer disabled:opacity-50"
+            >
+              {loading ? '[...] AUTENTICANDO...' : '[→] INGRESAR'}
+            </button>
+          </div>
         </form>
+
+        <div className="mt-8 pt-4 border-t border-black text-[10px] font-mono text-neutral-500 uppercase tracking-widest text-center">
+          SEGURIDAD // MULTI-TENANT // SESIÓN CIFRADA
+        </div>
       </div>
     </div>
   );

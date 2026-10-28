@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import LayoutShell from './components/LayoutShell';
 
 export const metadata: Metadata = {
-  title: 'Control de Caja Real | Entradas, Salidas y Alertas',
-  description: 'Gestión de flujo de dinero, rentabilidad de productos y recordatorios de pago para negocios pequeños.',
+  title: 'PULSO // CAJA - Sistema Monocromático de Flujo',
+  description: 'Arquitectura de gestión de caja real, inventario y movimientos financieros.',
 };
 
 export default function RootLayout({
@@ -12,9 +13,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className="dark">
-      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-emerald-500 selection:text-white">
-        {children}
+    <html lang="es">
+      <body className="bg-white text-black min-h-screen antialiased selection:bg-black selection:text-white">
+        <LayoutShell>{children}</LayoutShell>
       </body>
     </html>
   );

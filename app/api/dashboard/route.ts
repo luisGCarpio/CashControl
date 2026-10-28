@@ -1,20 +1,26 @@
 import { NextResponse } from 'next/server';
+import { getSession } from '@/app/modules/auth/session';
 import { getCashVision, getBarChartStats, getRecentMovements } from '@/app/modules/movements/service';
 import { getProductsWithMetrics } from '@/app/modules/products/service';
 import { getActiveReminders } from '@/app/modules/reminders/service';
-import { generateSmartAlerts } from '@/app/modules/analytics/alerts';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const [vision, chartStats, movements, products, reminders, smartAnalysis] = await Promise.all([
-      getCashVision(),
-      getBarChartStats(),
-      getRecentMovements(40),
-      getProductsWithMetrics(),
-      getActiveReminders(),
-      generateSmartAlerts(),
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+    }
+
+    const { userId } = session;
+
+    const [vision, chartStats, movements, products, reminders] = await Promise.all([
+      getCashVision(userId),
+      getBarChartStats(userId),
+      getRecentMovements(userId, 40),
+      getProductsWithMetrics(userId),
+      getActiveReminders(userId),
     ]);
 
     return NextResponse.json({
@@ -23,8 +29,6 @@ export async function GET() {
       movements,
       products,
       reminders,
-      alerts: smartAnalysis.alerts,
-      productInsights: smartAnalysis.productInsights,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
