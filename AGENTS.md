@@ -72,3 +72,12 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - **No direct commits or pushes to `main`:** The `main` branch is strictly reserved for stable production releases. Under no circumstances should an agent push code directly to `main` or merge branches into `main` without explicit, unambiguous user instruction.
 - **`develop` is the active workspace:** All development, refactoring, security audits, and feature implementations must take place strictly on `develop` (or dedicated feature branches).
 - **Verification before release:** Code must never be promoted to production without passing the complete test suite (`npm test`), zero TypeScript compilation errors (`npx tsc --noEmit`), and final user approval.
+
+## 6. Strict Monochromatic Brutalist Design System
+
+**Follow `DESIGN.md` unconditionally when touching any UI component or style.**
+
+- **Strict B&W Palette (No grays):** Strictly pure black (`#000000`) and pure white (`#ffffff`). Never introduce `neutral-*`, `gray-*`, `zinc-*`, `#fafafa`, `#777777`, or intermediate tints in backgrounds, borders, or text. Disabled states use `opacity-35`, never gray.
+- **Inversion Law for Hover:** White elements invert to black (`hover:bg-black hover:text-white`). Black elements invert to white (`hover:bg-white hover:text-black`). Table rows have no background hover shift. Table action buttons invert to black (`hover:bg-black hover:text-white`).
+- **Geometry & Elevation:** 0px border-radius everywhere (`border-radius: 0 !important`). No box-shadows or glows (`box-shadow: none !important`). Clean 1px solid black borders.
+- **No Decorative Noise:** Never add decorative dividing lines (`border-t-2`, `border-b-2`), ornamental icons in framed boxes, or pseudo-indicator helper text in forms or modals. Keep inputs, labels, and actions direct and functional.
