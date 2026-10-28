@@ -28,6 +28,9 @@ export const MovementInputSchema = z
     quantity: z.coerce.number().int().min(1, 'La cantidad debe ser al menos 1').default(1),
     is_unplanned: z.boolean().default(false),
     movement_date: z.string().optional(),
+    payment_method: z.string().nullable().optional(),
+    paymentMethod: z.string().nullable().optional(),
+    medio_pago: z.string().nullable().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'ENTRADA') {
@@ -64,6 +67,36 @@ export const MovementInputSchema = z
   });
 
 export type MovementInput = z.infer<typeof MovementInputSchema>;
+
+export const MovementBatchItemSchema = z.object({
+  type: z.enum(['ENTRADA', 'SALIDA']).default('ENTRADA'),
+  category: z.string().optional(),
+  amount: z.coerce.number().positive('El monto debe ser un valor mayor a cero'),
+  description: z.string().max(500).optional(),
+  product_id: z.coerce.number().int().positive().nullable().optional(),
+  quantity: z.coerce.number().int().min(1, 'La cantidad debe ser al menos 1').default(1),
+  is_unplanned: z.boolean().default(false),
+  movement_date: z.string().optional(),
+  payment_method: z.string().nullable().optional(),
+  paymentMethod: z.string().nullable().optional(),
+  medio_pago: z.string().nullable().optional(),
+});
+
+export type MovementBatchItem = z.infer<typeof MovementBatchItemSchema>;
+
+export const MovementBatchSchema = z.object({
+  payment_method: z.string().nullable().optional(),
+  paymentMethod: z.string().nullable().optional(),
+  medio_pago: z.string().nullable().optional(),
+  type: z.enum(['ENTRADA', 'SALIDA']).optional(),
+  category: z.string().optional(),
+  description: z.string().optional(),
+  movement_date: z.string().optional(),
+  is_unplanned: z.boolean().optional(),
+  items: z.array(MovementBatchItemSchema).min(1, 'Debe incluir al menos un producto o ítem en la venta'),
+});
+
+export type MovementBatch = z.infer<typeof MovementBatchSchema>;
 
 export const ProductInputSchema = z.object({
   name: z.string().min(1, 'El nombre del producto es obligatorio').max(120),
