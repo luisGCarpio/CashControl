@@ -35,24 +35,17 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4">
-      <div className="w-full max-w-md bg-white border-2 border-black p-8 rounded-none">
+      <div className="w-full max-w-md bg-white border border-black p-8 rounded-none">
         {/* Encabezado */}
-        <div className="border-b-2 border-black pb-4 mb-6">
-          <div className="text-[11px] font-mono tracking-widest text-neutral-600 uppercase mb-1">
-            TERMINAL DE AUTENTICACIÓN
-          </div>
+        <div className="mb-6">
           <h1 className="text-xl font-bold font-mono tracking-tight text-black uppercase">
-            ACCESO AL SISTEMA // AUTENTICACIÓN
+            Iniciar sesión
           </h1>
         </div>
 
-        <p className="text-xs font-mono text-neutral-700 uppercase mb-6 tracking-wide">
-          INGRESE SUS CREDENCIALES PARA CONTINUAR
-        </p>
-
         {error && (
-          <div role="alert" aria-live="polite" className="border-2 border-black bg-black text-white p-3 font-mono text-xs uppercase mb-6">
-            [ERROR] {error}
+          <div role="alert" aria-live="polite" className="border border-black bg-black text-white p-3 font-mono text-xs uppercase mb-6">
+            {error}
           </div>
         )}
 
@@ -62,7 +55,7 @@ export default function LoginPage() {
               htmlFor="username"
               className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
             >
-              USUARIO:
+              Usuario
             </label>
             <input
               id="username"
@@ -70,7 +63,7 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              className="w-full border-2 border-black bg-white px-3 py-2 text-sm font-mono rounded-none focus:bg-neutral-50"
+              className="w-full border border-black bg-white px-3 py-2 text-sm font-mono rounded-none"
               placeholder="admin"
             />
           </div>
@@ -80,7 +73,7 @@ export default function LoginPage() {
               htmlFor="password"
               className="block text-xs font-mono font-bold tracking-wider uppercase mb-1 text-black"
             >
-              CONTRASEÑA:
+              Contraseña
             </label>
             <input
               id="password"
@@ -88,7 +81,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full border-2 border-black bg-white px-3 py-2 text-sm font-mono rounded-none focus:bg-neutral-50"
+              className="w-full border border-black bg-white px-3 py-2 text-sm font-mono rounded-none"
               placeholder="••••••••"
             />
           </div>
@@ -97,16 +90,12 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full border-2 border-black bg-black text-white hover:bg-white hover:text-black transition-none py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider rounded-none cursor-pointer disabled:opacity-50"
+              className="w-full border border-black bg-black text-white hover:bg-white hover:text-black transition-none py-3 px-4 text-xs font-mono font-bold uppercase tracking-wider rounded-none cursor-pointer disabled:opacity-50"
             >
-              {loading ? '[...] AUTENTICANDO...' : '[→] INGRESAR'}
+              {loading ? 'Autenticando...' : 'Ingresar'}
             </button>
           </div>
         </form>
-
-        <div className="mt-8 pt-4 border-t border-black text-[10px] font-mono text-neutral-500 uppercase tracking-widest text-center">
-          SEGURIDAD // MULTI-TENANT // SESIÓN CIFRADA
-        </div>
       </div>
     </div>
   );

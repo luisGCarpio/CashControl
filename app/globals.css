@@ -6,8 +6,8 @@
   --bg-primary: #ffffff;
   --text-primary: #000000;
   --border-primary: #000000;
-  --border-muted: #222222;
-  --bg-secondary: #f7f7f7;
+  --border-muted: #000000;
+  --bg-secondary: #ffffff;
 }
 
 /* Regla estricta universal: 0px de redondeado en absolutamente todo */
@@ -51,18 +51,13 @@ h1, h2, h3, h4, h5, h6 {
 h1 {
   font-size: 1.625rem;
   line-height: 1.2;
-  border-bottom: 2px solid #000000;
-  padding-bottom: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 h2 {
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   line-height: 1.25;
-  border-bottom: 1px solid #000000;
-  padding-bottom: 8px;
-  margin-bottom: 16px;
-  margin-top: 24px;
+  margin-bottom: 12px;
 }
 
 h3 {
@@ -121,10 +116,17 @@ button:disabled,
 .btn:disabled,
 input[type="submit"]:disabled,
 input[type="button"]:disabled {
-  background-color: #ffffff;
-  color: #777777;
-  border-color: #777777;
-  cursor: not-allowed;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #000000 !important;
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
+
+button:disabled:hover,
+.btn:disabled:hover {
+  background-color: #ffffff !important;
+  color: #000000 !important;
 }
 
 /* Formularios, campos y foco nítido sin resplandores */
@@ -148,6 +150,12 @@ textarea {
   width: 100%;
   box-sizing: border-box;
   transition: none !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  margin-left: auto;
+  padding-left: 8px;
 }
 
 input:focus,
@@ -196,19 +204,17 @@ label {
   display: inline-block;
 }
 
-/* Tablas con cuadrícula geométrica visible */
+/* Tablas limpias sin espacios superiores ni bordes duplicados */
 table {
   width: 100%;
-  border-collapse: collapse !important;
-  border: 1px solid #000000;
-  margin: 16px 0;
+  border-collapse: collapse;
+  margin: 0;
   background-color: #ffffff;
 }
 
 th,
 td {
-  border: 1px solid #000000;
-  padding: 8px 12px;
+  padding: 10px 12px;
   text-align: left;
   vertical-align: middle;
   font-size: 0.8125rem;
@@ -224,20 +230,57 @@ th {
 }
 
 tr:hover td {
-  background-color: #f7f7f7;
+  background-color: #ffffff;
+}
+
+/* Botones de acción limpios para tablas y paginación (sin cuadros toscos) */
+.table-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent !important;
+  color: #000000 !important;
+  border: none !important;
+  padding: 2px 4px !important;
+  font-family: inherit;
+  font-size: 0.75rem !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+.table-action-btn:hover {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+  text-decoration: none;
+}
+
+.table-action-btn:disabled {
+  color: #000000 !important;
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+  text-decoration: none !important;
 }
 
 /* Enlaces con estilo tipográfico */
-a {
+a:not(.no-underline) {
   color: #000000;
   text-decoration: underline;
   text-underline-offset: 3px;
   transition: none !important;
 }
 
-a:hover {
+a:not(.no-underline):hover {
   background-color: #000000;
   color: #ffffff;
+  text-decoration: none;
+}
+
+a.no-underline {
   text-decoration: none;
 }
 
@@ -245,37 +288,23 @@ a:hover {
 .error {
   color: #000000;
   background-color: #ffffff;
-  border: 2px solid #000000;
+  border: 1px solid #000000;
   padding: 10px 14px;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.8125rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   margin: 14px 0;
   display: block;
-}
-
-.error::before {
-  content: "[ALERTA / ERROR] ";
-  font-weight: 900;
 }
 
 .success {
   color: #000000;
   background-color: #ffffff;
-  border: 2px solid #000000;
+  border: 1px solid #000000;
   padding: 10px 14px;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.8125rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   margin: 14px 0;
   display: block;
-}
-
-.success::before {
-  content: "[SISTEMA / OK] ";
-  font-weight: 900;
 }
 
 /* Scrollbars Monocromáticas Cuadradas */
@@ -295,5 +324,5 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #333333;
+  background: #000000;
 }
