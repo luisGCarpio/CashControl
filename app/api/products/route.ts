@@ -6,7 +6,7 @@ import {
   updateProductStock,
   getProductsWithMetrics,
 } from '@/app/modules/products/service';
-import { ProductInputSchema } from '@/lib/schemas';
+import { ProductInputSchema, UpdateStockSchema, EntityIdSchema } from '@/lib/schemas';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,17 +62,16 @@ export async function DELETE(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const idParam = searchParams.get('id');
-    const id = Number(idParam);
+    const validation = EntityIdSchema.safeParse({ id: searchParams.get('id') });
 
-    if (!id || isNaN(id) || id <= 0) {
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'ID de producto inválido para desactivación.' },
+        { error: validation.error.issues[0]?.message || 'ID de producto inválido para desactivación.' },
         { status: 400 }
       );
     }
 
-    const res = await deactivateProduct(session.userId, id);
+    const res = await deactivateProduct(session.userId, validation.data.id);
     return NextResponse.json(res);
   } catch (error: any) {
     return NextResponse.json(
@@ -89,26 +88,17 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
     }
 
-    const body = await req.json().catch(() => null);
-    if (!body || typeof body !== 'object') {
+    const rawBody = await req.json().catch(() => null);
+    const validation = UpdateStockSchema.safeParse(rawBody);
+
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'Cuerpo de solicitud inválido.' },
+        { error: validation.error.issues[0]?.message || 'ID de producto o nuevo stock inválido.' },
         { status: 400 }
       );
     }
 
-    const { id, stock } = body;
-    const prodId = Number(id);
-    const newStock = Number(stock);
-
-    if (!prodId || isNaN(prodId) || isNaN(newStock) || newStock < 0) {
-      return NextResponse.json(
-        { error: 'ID de producto o nuevo stock inválido.' },
-        { status: 400 }
-      );
-    }
-
-    const updated = await updateProductStock(session.userId, prodId, newStock);
+    const updated = await updateProductStock(session.userId, validation.data.id, validation.data.stock);
     return NextResponse.json(updated);
   } catch (error: any) {
     return NextResponse.json(

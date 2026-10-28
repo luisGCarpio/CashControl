@@ -3,8 +3,8 @@ import './globals.css';
 import LayoutShell from './components/LayoutShell';
 
 export const metadata: Metadata = {
-  title: 'PULSO // CAJA - Sistema Monocromático de Flujo',
-  description: 'Arquitectura de gestión de caja real, inventario y movimientos financieros.',
+  title: 'Pulso Caja - Control de Flujo e Inventario',
+  description: 'Gestión de caja real, inventario y movimientos financieros.',
 };
 
 export default function RootLayout({

@@ -20,15 +20,15 @@ export default function LayoutShell({ children }: LayoutShellProps) {
     );
   }
 
-  // En el resto del sistema: cuadrícula/flex con dos columnas
+  // En el resto del sistema: layout responsivo (columna en móvil, fila en desktop)
   return (
-    <div className="flex min-h-screen bg-white">
-      {/* Columna Izquierda: Sidebar persistente y fija (ancho 240px) */}
+    <div className="flex flex-col md:flex-row min-h-screen bg-white">
+      {/* Sidebar: barra superior móvil + drawer en móvil, aside persistente de 240px en desktop */}
       <Sidebar />
 
-      {/* Columna Derecha: Contenido principal (<main>) con márgenes adecuados y fondo blanco */}
+      {/* Contenedor de contenido principal con flex-1 min-w-0 y márgenes ergonómicos en móviles (p-4 md:p-10) */}
       <div className="flex-1 min-w-0 bg-white">
-        <div className="p-6 md:p-10 max-w-7xl mx-auto w-full">
+        <div className="p-4 md:p-10 max-w-7xl mx-auto w-full">
           {children}
         </div>
       </div>

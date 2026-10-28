@@ -1,17 +1,102 @@
 import { z } from 'zod';
 
-export const MovementInputSchema = z.object({
-  type: z.enum(['ENTRADA', 'SALIDA']),
-  category: z.string().min(1, 'La categoría es obligatoria'),
+export const ENTRADA_CATEGORIES = [
+  'VENTA_PRODUCTO',
+  'APORTE_CAPITAL',
+  'OTRO_INGRESO',
+] as const;
+
+export const SALIDA_CATEGORIES = [
+  'GASTO_GENERAL',
+  'COMPRA_CATALOGO',
+  'MATERIA_PRIMA',
+  'SERVICIOS_ARRIENDO',
+  'GASTO_NO_PLANEADO',
+  'RETIRO_PERSONAL',
+] as const;
+
+export type EntradaCategory = (typeof ENTRADA_CATEGORIES)[number];
+export type SalidaCategory = (typeof SALIDA_CATEGORIES)[number];
+
+export const MovementInputSchema = z
+  .object({
+    type: z.enum(['ENTRADA', 'SALIDA']),
+    category: z.string().min(1, 'La categoría es obligatoria'),
+    amount: z.coerce.number().positive('El monto debe ser un valor mayor a cero'),
+    description: z.string().min(1, 'La descripción es obligatoria').max(500),
+    product_id: z.coerce.number().int().positive().nullable().optional(),
+    quantity: z.coerce.number().int().min(1, 'La cantidad debe ser al menos 1').default(1),
+    is_unplanned: z.boolean().default(false),
+    movement_date: z.string().optional(),
+    payment_method: z.string().nullable().optional(),
+    paymentMethod: z.string().nullable().optional(),
+    medio_pago: z.string().nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === 'ENTRADA') {
+      if (!ENTRADA_CATEGORIES.includes(data.category as EntradaCategory)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Categoría inválida para ENTRADA. Opciones válidas: ${ENTRADA_CATEGORIES.join(', ')}`,
+          path: ['category'],
+        });
+      }
+    } else if (data.type === 'SALIDA') {
+      if (!SALIDA_CATEGORIES.includes(data.category as SalidaCategory)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Categoría inválida para SALIDA. Opciones válidas: ${SALIDA_CATEGORIES.join(', ')}`,
+          path: ['category'],
+        });
+      }
+    }
+
+    if (
+      data.category === 'VENTA_PRODUCTO' ||
+      data.category === 'COMPRA_CATALOGO' ||
+      data.category === 'MATERIA_PRIMA'
+    ) {
+      if (!data.product_id || typeof data.product_id !== 'number' || data.product_id <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Se requiere un product_id numérico válido para esta categoría',
+          path: ['product_id'],
+        });
+      }
+    }
+  });
+
+export type MovementInput = z.infer<typeof MovementInputSchema>;
+
+export const MovementBatchItemSchema = z.object({
+  type: z.enum(['ENTRADA', 'SALIDA']).default('ENTRADA'),
+  category: z.string().optional(),
   amount: z.coerce.number().positive('El monto debe ser un valor mayor a cero'),
-  description: z.string().min(1, 'La descripción es obligatoria').max(500),
+  description: z.string().max(500).optional(),
   product_id: z.coerce.number().int().positive().nullable().optional(),
   quantity: z.coerce.number().int().min(1, 'La cantidad debe ser al menos 1').default(1),
   is_unplanned: z.boolean().default(false),
   movement_date: z.string().optional(),
+  payment_method: z.string().nullable().optional(),
+  paymentMethod: z.string().nullable().optional(),
+  medio_pago: z.string().nullable().optional(),
 });
 
-export type MovementInput = z.infer<typeof MovementInputSchema>;
+export type MovementBatchItem = z.infer<typeof MovementBatchItemSchema>;
+
+export const MovementBatchSchema = z.object({
+  payment_method: z.string().nullable().optional(),
+  paymentMethod: z.string().nullable().optional(),
+  medio_pago: z.string().nullable().optional(),
+  type: z.enum(['ENTRADA', 'SALIDA']).optional(),
+  category: z.string().optional(),
+  description: z.string().optional(),
+  movement_date: z.string().optional(),
+  is_unplanned: z.boolean().optional(),
+  items: z.array(MovementBatchItemSchema).min(1, 'Debe incluir al menos un producto o ítem en la venta'),
+});
+
+export type MovementBatch = z.infer<typeof MovementBatchSchema>;
 
 export const ProductInputSchema = z.object({
   name: z.string().min(1, 'El nombre del producto es obligatorio').max(120),
@@ -24,15 +109,42 @@ export const ProductInputSchema = z.object({
 
 export type ProductInput = z.infer<typeof ProductInputSchema>;
 
+export const UpdateStockSchema = z.object({
+  id: z.coerce.number().int().positive('El ID debe ser un entero positivo'),
+  stock: z.coerce.number().int().min(0, 'El stock no puede ser negativo'),
+});
+
+export type UpdateStockInput = z.infer<typeof UpdateStockSchema>;
+
 export const ReminderInputSchema = z.object({
   title: z.string().min(1, 'El título es obligatorio').max(120),
-  amount: z.coerce.number().min(0, 'El monto no puede ser negativo').default(0),
+  amount: z
+    .coerce
+    .number()
+    .min(0, 'El monto no puede ser negativo')
+    .max(999999999.99, 'El monto excede el valor máximo permitido')
+    .default(0),
   category: z.string().min(1).default('SERVICIOS_ARRIENDO'),
   frequency: z.enum(['UNICO', 'SEMANAL', 'QUINCENAL', 'MENSUAL']),
-  due_date: z.string().min(1, 'La fecha límite es obligatoria'),
+  due_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha límite debe tener el formato YYYY-MM-DD'),
 });
 
 export type ReminderInput = z.infer<typeof ReminderInputSchema>;
+
+export const MarkReminderPaidSchema = z.object({
+  id: z.coerce.number().int().positive('El ID del recordatorio debe ser un entero positivo'),
+  registerExpense: z.boolean().default(false),
+});
+
+export type MarkReminderPaidInput = z.infer<typeof MarkReminderPaidSchema>;
+
+export const EntityIdSchema = z.object({
+  id: z.coerce.number().int().positive('El ID debe ser un entero positivo'),
+});
+
+export type EntityIdInput = z.infer<typeof EntityIdSchema>;
 
 export const AuthLoginSchema = z.object({
   username: z.string().min(1, 'El usuario es obligatorio'),
@@ -42,8 +154,15 @@ export const AuthLoginSchema = z.object({
 export type AuthLoginInput = z.infer<typeof AuthLoginSchema>;
 
 export const AuthRegisterSchema = z.object({
-  username: z.string().min(3, 'El usuario debe tener al menos 3 caracteres').max(50),
-  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  username: z
+    .string()
+    .min(3, 'El usuario debe tener al menos 3 caracteres')
+    .max(50, 'El usuario no puede tener más de 50 caracteres')
+    .regex(/^[a-zA-Z0-9_-]+$/, 'El usuario solo puede contener letras, números, guiones y guiones bajos'),
+  password: z
+    .string()
+    .min(8, 'La contraseña debe tener al menos 8 caracteres')
+    .max(72, 'La contraseña no puede exceder 72 caracteres'),
   business_name: z.string().min(2, 'El nombre del negocio debe tener al menos 2 caracteres').default('Mi Negocio'),
 });
 

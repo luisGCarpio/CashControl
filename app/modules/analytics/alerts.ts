@@ -1,5 +1,5 @@
 import { query } from '@/bd/connection';
-import { getProductsWithMetrics } from '../products/service';
+import { getProductsWithMetrics, ProductMetricRow } from '../products/service';
 
 export interface SmartAlert {
   id: string;
@@ -9,10 +9,21 @@ export interface SmartAlert {
   detail: string;
 }
 
-export async function generateSmartAlerts(userId: number = 1): Promise<{
+export interface ProductInsights {
+  masVendido: ProductMetricRow | null;
+  menosVendido: ProductMetricRow | null;
+  masRentable: ProductMetricRow | null;
+  menosRentable: ProductMetricRow | null;
+}
+
+export async function generateSmartAlerts(userId: number): Promise<{
   alerts: SmartAlert[];
-  productInsights: Record<string, any>;
+  productInsights: ProductInsights;
 }> {
+  if (!userId || typeof userId !== 'number' || userId <= 0) {
+    throw new Error('userId inválido o no proporcionado.');
+  }
+
   const alerts: SmartAlert[] = [];
 
   // 1. ALERTA DE GASTOS: Comparación por categoría (Semana actual vs Semana pasada)
@@ -25,6 +36,7 @@ export async function generateSmartAlerts(userId: number = 1): Promise<{
                          AND movement_date < date_trunc('week', CURRENT_DATE) THEN amount ELSE 0 END), 0)::FLOAT AS prev_week
     FROM movements
     WHERE type = 'SALIDA' AND user_id = $1
+      AND movement_date >= date_trunc('week', CURRENT_DATE) - INTERVAL '1 week'
     GROUP BY category
   `,
     [userId]
@@ -61,6 +73,7 @@ export async function generateSmartAlerts(userId: number = 1): Promise<{
                          AND movement_date < date_trunc('month', CURRENT_DATE) THEN amount ELSE 0 END), 0)::FLOAT AS prev_month
     FROM movements
     WHERE type = 'SALIDA' AND user_id = $1
+      AND movement_date >= date_trunc('month', CURRENT_DATE) - INTERVAL '1 month'
     GROUP BY category
   `,
     [userId]
@@ -109,7 +122,7 @@ export async function generateSmartAlerts(userId: number = 1): Promise<{
 
   // 4. INTELIGENCIA Y ALERTAS DE PRODUCTOS
   const products = await getProductsWithMetrics(userId);
-  const productInsights: Record<string, any> = {
+  const productInsights: ProductInsights = {
     masVendido: null,
     menosVendido: null,
     masRentable: null,

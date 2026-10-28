@@ -55,6 +55,11 @@ export async function markReminderAsPaid(userId: number, reminderId: number, reg
 
     const rem = remRes.rows[0];
 
+    // Idempotencia: Si el recordatorio único ya fue completado, impedir pago duplicado
+    if (rem.frequency === 'UNICO' && rem.is_completed) {
+      throw new Error('El recordatorio ya ha sido completado y pagado previamente.');
+    }
+
     // 1. Si el usuario confirma pago y el monto > 0, registrar automáticamente la salida en caja
     if (registerExpense && Number(rem.amount) > 0) {
       await client.query(
@@ -71,19 +76,15 @@ export async function markReminderAsPaid(userId: number, reminderId: number, reg
       );
     }
 
-    // 2. Si es único se marca completado; si es recurrente se reprograma la próxima fecha
+    // 2. Si es único se marca completado; si es recurrente se reprograma la próxima fecha de forma atómica
     if (rem.frequency === 'UNICO') {
       await client.query(
         `UPDATE reminders SET is_completed = TRUE WHERE id = $1 AND user_id = $2`,
         [reminderId, userId]
       );
     } else {
-      let intervalSql = "INTERVAL '1 month'";
-      if (rem.frequency === 'SEMANAL') intervalSql = "INTERVAL '7 days'";
-      if (rem.frequency === 'QUINCENAL') intervalSql = "INTERVAL '15 days'";
-
       await client.query(
-        `UPDATE reminders SET due_date = (due_date + ${intervalSql})::DATE WHERE id = $1 AND user_id = $2`,
+        `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE WHERE id = $1 AND user_id = $2`,
         [reminderId, userId]
       );
     }
