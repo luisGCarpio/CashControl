@@ -3,10 +3,13 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import AlertsDrawer from './AlertsDrawer';
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [alertCount, setAlertCount] = useState<number>(0);
 
   // Si la ruta es '/login', la barra lateral no se debe mostrar
   if (pathname === '/login') {
@@ -16,6 +19,22 @@ export default function Sidebar() {
   // Cerrar menú móvil al cambiar de ruta
   useEffect(() => {
     setIsMobileOpen(false);
+  }, [pathname]);
+
+  // Cargar y actualizar conteo de alertas activas
+  useEffect(() => {
+    let isMounted = true;
+    fetch('/api/alerts')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (isMounted && data && typeof data.totalCount === 'number') {
+          setAlertCount(data.totalCount);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
   }, [pathname]);
 
   // Cerrar menú móvil al presionar tecla Escape
@@ -69,15 +88,30 @@ export default function Sidebar() {
         <div className="border border-black bg-black text-white py-1 px-3 text-xs font-bold uppercase tracking-wider text-center select-none inline-block">
           copia wood
         </div>
-        <button
-          type="button"
-          onClick={() => setIsMobileOpen(true)}
-          className="border border-black bg-white hover:bg-black hover:text-white text-black py-1 px-3 text-xs font-bold uppercase tracking-wider transition-none cursor-pointer"
-          aria-label="Abrir menú de navegación"
-          aria-expanded={isMobileOpen}
-        >
-          Menú
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsAlertsOpen(true)}
+            className={`border border-black py-1 px-2.5 text-xs font-bold uppercase font-mono tracking-wider transition-none cursor-pointer flex items-center gap-1.5 ${
+              alertCount > 0
+                ? 'bg-black text-white hover:bg-white hover:text-black'
+                : 'bg-white text-black hover:bg-black hover:text-white'
+            }`}
+            aria-label="Abrir centro de alertas"
+          >
+            <span>ALERTAS</span>
+            <span className="tabular-nums font-mono font-bold">[{alertCount}]</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsMobileOpen(true)}
+            className="border border-black bg-white hover:bg-black hover:text-white text-black py-1 px-3 text-xs font-bold uppercase tracking-wider transition-none cursor-pointer"
+            aria-label="Abrir menú de navegación"
+            aria-expanded={isMobileOpen}
+          >
+            Menú
+          </button>
+        </div>
       </header>
 
       {/* Drawer móvil colapsable (< 768px) */}
@@ -106,6 +140,25 @@ export default function Sidebar() {
                   aria-label="Cerrar menú de navegación"
                 >
                   Cerrar
+                </button>
+              </div>
+
+              {/* Botón Alertas en Drawer Móvil */}
+              <div className="p-3 pb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileOpen(false);
+                    setIsAlertsOpen(true);
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 border border-black text-xs font-bold font-mono uppercase tracking-wider transition-none cursor-pointer ${
+                    alertCount > 0
+                      ? 'bg-black text-white hover:bg-white hover:text-black'
+                      : 'bg-white text-black hover:bg-black hover:text-white'
+                  }`}
+                >
+                  <span>CENTRO DE ALERTAS</span>
+                  <span className="tabular-nums font-mono font-bold">[{alertCount}]</span>
                 </button>
               </div>
 
@@ -147,7 +200,7 @@ export default function Sidebar() {
 
       {/* Sidebar persistente en desktop (>= 768px) */}
       <aside className="hidden md:flex w-60 min-w-[240px] max-w-[240px] h-screen sticky top-0 bg-white border-r border-black flex-col justify-between select-none z-30 shrink-0">
-        {/* Sección Superior: Logotipo y Menú */}
+        {/* Sección Superior: Logotipo, Acceso a Alertas y Menú */}
         <div className="flex flex-col">
           <div className="p-4 border-b border-black bg-white">
             <div className="w-full py-2.5 px-3 border border-black bg-black text-white text-xs font-bold uppercase tracking-wider text-center select-none">
@@ -155,7 +208,24 @@ export default function Sidebar() {
             </div>
           </div>
 
-          <nav className="p-3">
+          {/* Botón Radar de Alertas Desktop */}
+          <div className="p-3 pb-1">
+            <button
+              type="button"
+              onClick={() => setIsAlertsOpen(true)}
+              className={`w-full flex items-center justify-between px-3 py-2.5 border border-black text-xs font-bold font-mono uppercase tracking-wider transition-none cursor-pointer ${
+                alertCount > 0
+                  ? 'bg-black text-white hover:bg-white hover:text-black'
+                  : 'bg-white text-black hover:bg-black hover:text-white'
+              }`}
+              aria-label="Ver centro de alertas"
+            >
+              <span>ALERTAS</span>
+              <span className="tabular-nums font-mono font-bold">[{alertCount}]</span>
+            </button>
+          </div>
+
+          <nav className="p-3 pt-1">
             <ul className="m-0 p-0 list-none space-y-1">
               {navItems.map((item) => {
                 const activeClass = item.isActive
@@ -188,6 +258,13 @@ export default function Sidebar() {
           </button>
         </div>
       </aside>
+
+      {/* Drawer Deslizable del Centro de Alertas */}
+      <AlertsDrawer
+        isOpen={isAlertsOpen}
+        onClose={() => setIsAlertsOpen(false)}
+        onAlertCountChange={setAlertCount}
+      />
     </>
   );
 }
