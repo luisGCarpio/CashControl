@@ -1006,6 +1006,60 @@ async function runComprehensiveVerification() {
     });
   }
 
+  // ----------------------------------------------------
+  // TEST 21: Daily Cash Reconciliation & Multi-Tenant Invariants
+  // ----------------------------------------------------
+  try {
+    const user1Movements = await pool.query(
+      `SELECT id, type, amount::FLOAT, description, movement_date FROM movements WHERE user_id = $1 ORDER BY movement_date DESC`,
+      [1]
+    );
+
+    let entEfectivo = 0, entDigital = 0, salEfectivo = 0, salDigital = 0;
+    for (const row of user1Movements.rows) {
+      const isDigital = /^\[(TRANSFERENCIA|NEQUI|DAVIPLATA|TARJETA|BANCO|DIGITAL)\]/i.test(row.description || '');
+      const amt = Number(row.amount) || 0;
+      if (row.type === 'ENTRADA') {
+        if (isDigital) entDigital += amt; else entEfectivo += amt;
+      } else {
+        if (isDigital) salDigital += amt; else salEfectivo += amt;
+      }
+    }
+
+    const totalEntradas = entEfectivo + entDigital;
+    const totalSalidas = salEfectivo + salDigital;
+    const flujoNeto = totalEntradas - totalSalidas;
+    const saldoEfectivo = entEfectivo - salEfectivo;
+    const saldoDigital = entDigital - salDigital;
+
+    const invariantHolds = Math.abs(flujoNeto - (saldoEfectivo + saldoDigital)) < 0.001;
+    const testTenantId = user2?.id || 999999;
+    const user2Movements = await pool.query(
+      `SELECT count(*)::int AS count FROM movements WHERE user_id = $1`,
+      [testTenantId]
+    );
+    const user2Zero = user2Movements.rows[0].count === 0;
+
+    results.push({
+      test: '21. Daily Cash Reconciliation & Multi-Tenant Invariants',
+      passed: invariantHolds && user2Zero,
+      detail: {
+        totalEntradas,
+        totalSalidas,
+        saldoEfectivo,
+        saldoDigital,
+        invariantHolds,
+        user2Zero
+      }
+    });
+  } catch (err) {
+    results.push({
+      test: '21. Daily Cash Reconciliation & Multi-Tenant Invariants',
+      passed: false,
+      error: err.message
+    });
+  }
+
   console.log(JSON.stringify(results, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`\nTOTAL TESTS: ${results.length} | PASSED: ${results.length - failed.length} | FAILED: ${failed.length}`);

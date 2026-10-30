@@ -435,3 +435,217 @@ export async function deleteMovement(userId: number, movementId: number) {
     return { ok: true, deletedId: movementId };
   });
 }
+
+
+export interface ReconciliationMovement {
+  id: number;
+  type: 'ENTRADA' | 'SALIDA';
+  category: string;
+  amount: number;
+  description: string;
+  movement_date: string;
+  payment_method: string;
+  method?: string;
+  time?: string;
+}
+
+export interface CashReconciliationDTO {
+  date: string;
+  totalEntradas: number;
+  totalSalidas: number;
+  flujoNeto: number;
+  entradasEfectivo: number;
+  entradasDigital: number;
+  salidasEfectivo: number;
+  salidasDigital: number;
+  saldoTeoricoEfectivo: number;
+  saldoTeoricoDigital: number;
+  // Campos de compatibilidad con frontend y componentes de auditoría
+  saldoDigital?: number;
+  saldo_teorico_efectivo?: number;
+  saldo_digital?: number;
+  total_entradas?: number;
+  total_entradas_efectivo?: number;
+  total_entradas_digital?: number;
+  total_salidas?: number;
+  total_salidas_efectivo?: number;
+  total_salidas_digital?: number;
+  entradas?: {
+    total: number;
+    efectivo: number;
+    digital: number;
+  };
+  salidas?: {
+    total: number;
+    efectivo: number;
+    digital: number;
+  };
+  movements: ReconciliationMovement[];
+}
+
+export interface ExtractedPaymentMethod {
+  paymentMethod: string;
+  isDigital: boolean;
+}
+
+export function extractPaymentMethod(description?: string | null): ExtractedPaymentMethod {
+  if (!description || typeof description !== 'string') {
+    return { paymentMethod: 'EFECTIVO', isDigital: false };
+  }
+
+  const match = description.trim().match(/^\[([^\]]+)\]/);
+  if (!match) {
+    return { paymentMethod: 'EFECTIVO', isDigital: false };
+  }
+
+  const rawTag = match[1].trim().toUpperCase();
+
+  if (rawTag === 'EFECTIVO') {
+    return { paymentMethod: 'EFECTIVO', isDigital: false };
+  }
+
+  const isDigital = /(TRANSFERENCIA|NEQUI|DAVIPLATA|TARJETA|BANCO|DIGITAL)/.test(rawTag);
+  if (isDigital) {
+    return { paymentMethod: rawTag, isDigital: true };
+  }
+
+  return { paymentMethod: 'EFECTIVO', isDigital: false };
+}
+
+function roundMoney(value: number): number {
+  const rounded = Number(value.toFixed(2));
+  return rounded === 0 ? 0 : rounded;
+}
+
+interface ReconciliationDbRow {
+  id: number;
+  type: 'ENTRADA' | 'SALIDA';
+  category: string;
+  amount: number;
+  description: string;
+  movement_date: Date | string;
+}
+
+export async function getCashReconciliation(
+  userId: number,
+  dateStr?: string
+): Promise<CashReconciliationDTO> {
+  let targetDate: string;
+
+  if (dateStr && dateStr.trim()) {
+    const trimmed = dateStr.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      throw new Error('Formato de fecha inválido. Utilice el formato YYYY-MM-DD.');
+    }
+    const d = new Date(`${trimmed}T00:00:00Z`);
+    if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== trimmed) {
+      throw new Error('Fecha calendario inválida. Utilice el formato YYYY-MM-DD.');
+    }
+    targetDate = trimmed;
+  } else {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    targetDate = `${year}-${month}-${day}`;
+  }
+
+  const res = await query<ReconciliationDbRow>(
+    `
+    SELECT 
+      id,
+      type,
+      category,
+      amount::FLOAT AS amount,
+      description,
+      movement_date
+    FROM movements
+    WHERE user_id = $1 AND movement_date::date = $2::date
+    ORDER BY movement_date DESC, id DESC
+    `,
+    [userId, targetDate]
+  );
+
+  let rawEntradasEfectivo = 0;
+  let rawEntradasDigital = 0;
+  let rawSalidasEfectivo = 0;
+  let rawSalidasDigital = 0;
+
+  const movements: ReconciliationMovement[] = res.rows.map((row) => {
+    const { paymentMethod, isDigital } = extractPaymentMethod(row.description);
+    const amount = Number(row.amount) || 0;
+
+    if (row.type === 'ENTRADA') {
+      if (isDigital) {
+        rawEntradasDigital += amount;
+      } else {
+        rawEntradasEfectivo += amount;
+      }
+    } else if (row.type === 'SALIDA') {
+      if (isDigital) {
+        rawSalidasDigital += amount;
+      } else {
+        rawSalidasEfectivo += amount;
+      }
+    }
+
+    const movementDateStr =
+      row.movement_date instanceof Date
+        ? row.movement_date.toISOString()
+        : String(row.movement_date);
+
+    return {
+      id: row.id,
+      type: row.type,
+      category: row.category,
+      amount: roundMoney(amount),
+      description: row.description,
+      movement_date: movementDateStr,
+      payment_method: paymentMethod,
+    };
+  });
+
+  const entradasEfectivo = roundMoney(rawEntradasEfectivo);
+  const entradasDigital = roundMoney(rawEntradasDigital);
+  const salidasEfectivo = roundMoney(rawSalidasEfectivo);
+  const salidasDigital = roundMoney(rawSalidasDigital);
+
+  const totalEntradas = roundMoney(entradasEfectivo + entradasDigital);
+  const totalSalidas = roundMoney(salidasEfectivo + salidasDigital);
+  const flujoNeto = roundMoney(totalEntradas - totalSalidas);
+  const saldoTeoricoEfectivo = roundMoney(entradasEfectivo - salidasEfectivo);
+  const saldoTeoricoDigital = roundMoney(entradasDigital - salidasDigital);
+
+  return {
+    date: targetDate,
+    totalEntradas,
+    totalSalidas,
+    flujoNeto,
+    entradasEfectivo,
+    entradasDigital,
+    salidasEfectivo,
+    salidasDigital,
+    saldoTeoricoEfectivo,
+    saldoTeoricoDigital,
+    saldoDigital: saldoTeoricoDigital,
+    saldo_teorico_efectivo: saldoTeoricoEfectivo,
+    saldo_digital: saldoTeoricoDigital,
+    total_entradas: totalEntradas,
+    total_entradas_efectivo: entradasEfectivo,
+    total_entradas_digital: entradasDigital,
+    total_salidas: totalSalidas,
+    total_salidas_efectivo: salidasEfectivo,
+    total_salidas_digital: salidasDigital,
+    entradas: {
+      total: totalEntradas,
+      efectivo: entradasEfectivo,
+      digital: entradasDigital,
+    },
+    salidas: {
+      total: totalSalidas,
+      efectivo: salidasEfectivo,
+      digital: salidasDigital,
+    },
+    movements,
+  };
+}
