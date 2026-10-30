@@ -1,5 +1,7 @@
 import { query, withTransaction } from '@/bd/connection';
 import { MovementInput, MovementBatchItem } from '@/lib/schemas';
+import { formatCategory } from '@/lib/formatters';
+import { getActiveReminders, ReminderRow } from '@/app/modules/reminders/service';
 
 export function formatDescriptionWithPaymentMethod(
   description: string,
@@ -647,5 +649,396 @@ export async function getCashReconciliation(
       digital: salidasDigital,
     },
     movements,
+  };
+}
+
+export type ExecutivePeriod = 'ESTE_MES' | 'MES_ANTERIOR' | 'ULTIMOS_30_DIAS' | 'ESTE_ANO';
+
+export interface ExpenseCategoryBreakdown {
+  category: string;
+  label: string;
+  amount: number;
+  percentage: number;
+  categoria?: string;
+  nombre?: string;
+  monto?: number;
+  porcentaje?: number;
+}
+
+export interface UnplannedExpensesSummary {
+  total: number;
+  percentage: number;
+}
+
+export interface CashFlowPoint {
+  fecha: string;
+  etiqueta: string;
+  entradas: number;
+  salidas: number;
+  neto: number;
+}
+
+export interface ExecutiveDashboardDTO {
+  period: ExecutivePeriod;
+  periodo: ExecutivePeriod;
+  disponible_actual: number;
+  disponible_hoy: number;
+  entradas_periodo: number;
+  total_entradas_periodo: number;
+  salidas_periodo: number;
+  total_salidas_periodo: number;
+  flujo_neto_periodo: number;
+  rendimiento_neto: number;
+  ganancia_bruta_real: number;
+  margen_bruto_pct: number;
+  ventas_productos: number;
+  costo_mercancia_vendida: number;
+  desglose_gastos: ExpenseCategoryBreakdown[];
+  gastos_no_planeados: UnplannedExpensesSummary;
+  gastos_no_planeados_total: number;
+  gastos_no_planeados_pct: number;
+  alerta_fuga_no_planeados: {
+    hay_fuga: boolean;
+    total_no_planeado: number;
+    porcentaje_sobre_salidas: number;
+    conteo: number;
+  };
+  serie_flujo_caja: CashFlowPoint[];
+  urgentes_count: number;
+  urgentes_total: number;
+  obligaciones_pendientes: {
+    total_urgentes: number;
+    monto_total: number;
+    vencidas_conteo: number;
+    items: ReminderRow[];
+  };
+  vision?: {
+    disponible_actual: number;
+    total_entradas: number;
+    total_salidas: number;
+    entradas_mes: number;
+    salidas_mes: number;
+  };
+  movements?: MovementRow[];
+  reminders?: ReminderRow[];
+}
+
+function getPeriodDateBounds(period: ExecutivePeriod, column = 'movement_date'): string {
+  switch (period) {
+    case 'ESTE_MES':
+      return `${column} >= date_trunc('month', CURRENT_DATE) AND ${column} < date_trunc('day', CURRENT_DATE) + INTERVAL '1 day'`;
+    case 'MES_ANTERIOR':
+      return `${column} >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month') AND ${column} < date_trunc('month', CURRENT_DATE)`;
+    case 'ULTIMOS_30_DIAS':
+      return `${column} >= (CURRENT_DATE - INTERVAL '30 days') AND ${column} < date_trunc('day', CURRENT_DATE) + INTERVAL '1 day'`;
+    case 'ESTE_ANO':
+      return `${column} >= date_trunc('year', CURRENT_DATE) AND ${column} < date_trunc('day', CURRENT_DATE) + INTERVAL '1 day'`;
+    default:
+      return `${column} >= date_trunc('month', CURRENT_DATE) AND ${column} < date_trunc('day', CURRENT_DATE) + INTERVAL '1 day'`;
+  }
+}
+
+function getCashFlowSeriesQuery(period: ExecutivePeriod): string {
+  switch (period) {
+    case 'ESTE_MES':
+      return `
+        WITH date_series AS (
+          SELECT generate_series(
+            date_trunc('month', CURRENT_DATE)::date,
+            CURRENT_DATE,
+            INTERVAL '1 day'
+          )::date AS d_date
+        )
+        SELECT
+          TO_CHAR(s.d_date, 'YYYY-MM-DD') AS fecha,
+          TO_CHAR(s.d_date, 'DD Mon') AS etiqueta,
+          COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' THEN m.amount ELSE 0 END), 0)::FLOAT AS entradas,
+          COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0)::FLOAT AS salidas,
+          (COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' THEN m.amount ELSE 0 END), 0) -
+           COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0))::FLOAT AS neto
+        FROM date_series s
+        LEFT JOIN movements m
+          ON m.movement_date::date = s.d_date AND m.user_id = $1
+        GROUP BY s.d_date
+        ORDER BY s.d_date ASC
+      `;
+    case 'MES_ANTERIOR':
+      return `
+        WITH date_series AS (
+          SELECT generate_series(
+            date_trunc('month', CURRENT_DATE - INTERVAL '1 month')::date,
+            (date_trunc('month', CURRENT_DATE) - INTERVAL '1 day')::date,
+            INTERVAL '1 day'
+          )::date AS d_date
+        )
+        SELECT
+          TO_CHAR(s.d_date, 'YYYY-MM-DD') AS fecha,
+          TO_CHAR(s.d_date, 'DD Mon') AS etiqueta,
+          COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' THEN m.amount ELSE 0 END), 0)::FLOAT AS entradas,
+          COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0)::FLOAT AS salidas,
+          (COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' THEN m.amount ELSE 0 END), 0) -
+           COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0))::FLOAT AS neto
+        FROM date_series s
+        LEFT JOIN movements m
+          ON m.movement_date::date = s.d_date AND m.user_id = $1
+        GROUP BY s.d_date
+        ORDER BY s.d_date ASC
+      `;
+    case 'ULTIMOS_30_DIAS':
+      return `
+        WITH date_series AS (
+          SELECT generate_series(
+            (CURRENT_DATE - INTERVAL '30 days')::date,
+            CURRENT_DATE,
+            INTERVAL '1 day'
+          )::date AS d_date
+        )
+        SELECT
+          TO_CHAR(s.d_date, 'YYYY-MM-DD') AS fecha,
+          TO_CHAR(s.d_date, 'DD Mon') AS etiqueta,
+          COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' THEN m.amount ELSE 0 END), 0)::FLOAT AS entradas,
+          COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0)::FLOAT AS salidas,
+          (COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' THEN m.amount ELSE 0 END), 0) -
+           COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0))::FLOAT AS neto
+        FROM date_series s
+        LEFT JOIN movements m
+          ON m.movement_date::date = s.d_date AND m.user_id = $1
+        GROUP BY s.d_date
+        ORDER BY s.d_date ASC
+      `;
+    case 'ESTE_ANO':
+      return `
+        WITH month_series AS (
+          SELECT generate_series(
+            date_trunc('year', CURRENT_DATE)::date,
+            date_trunc('month', CURRENT_DATE)::date,
+            INTERVAL '1 month'
+          ) AS m_date
+        )
+        SELECT
+          TO_CHAR(s.m_date, 'YYYY-MM') AS fecha,
+          TO_CHAR(s.m_date, 'Mon YYYY') AS etiqueta,
+          COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' THEN m.amount ELSE 0 END), 0)::FLOAT AS entradas,
+          COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0)::FLOAT AS salidas,
+          (COALESCE(SUM(CASE WHEN m.type = 'ENTRADA' THEN m.amount ELSE 0 END), 0) -
+           COALESCE(SUM(CASE WHEN m.type = 'SALIDA' THEN m.amount ELSE 0 END), 0))::FLOAT AS neto
+        FROM month_series s
+        LEFT JOIN movements m
+          ON date_trunc('month', m.movement_date) = s.m_date AND m.user_id = $1
+        GROUP BY s.m_date
+        ORDER BY s.m_date ASC
+      `;
+  }
+}
+
+interface PeriodTotalsDbRow {
+  entradas_periodo: number;
+  salidas_periodo: number;
+  total_unplanned: number;
+}
+
+interface GrossProfitDbRow {
+  ventas_productos: number;
+  costo_mercancia_vendida: number;
+  ganancia_bruta_real: number;
+}
+
+interface ExpenseCategoryDbRow {
+  category: string;
+  amount: number;
+}
+
+interface CashFlowPointDbRow {
+  fecha: string;
+  etiqueta: string;
+  entradas: number;
+  salidas: number;
+  neto: number;
+}
+
+export async function getExecutiveDashboardData(
+  userId: number,
+  period: string = 'ESTE_MES'
+): Promise<ExecutiveDashboardDTO> {
+  if (!userId || typeof userId !== 'number' || isNaN(userId) || userId <= 0) {
+    throw new Error('Identificador de usuario inválido.');
+  }
+
+  const VALID_PERIODS: readonly ExecutivePeriod[] = [
+    'ESTE_MES',
+    'MES_ANTERIOR',
+    'ULTIMOS_30_DIAS',
+    'ESTE_ANO',
+  ] as const;
+
+  const normalizedInput = (period || '').toUpperCase().replace(/-/g, '_') as ExecutivePeriod;
+  const validPeriod: ExecutivePeriod = VALID_PERIODS.includes(normalizedInput) ? normalizedInput : 'ESTE_MES';
+
+  const [
+    vision,
+    periodTotalsRes,
+    grossProfitRes,
+    expenseCategoriesRes,
+    seriesRes,
+    activeReminders,
+    recentMovements,
+  ] = await Promise.all([
+    getCashVision(userId),
+    query<PeriodTotalsDbRow>(
+      `
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE 0 END), 0)::FLOAT AS entradas_periodo,
+        COALESCE(SUM(CASE WHEN type = 'SALIDA' THEN amount ELSE 0 END), 0)::FLOAT AS salidas_periodo,
+        COALESCE(SUM(CASE WHEN type = 'SALIDA' AND (is_unplanned = TRUE OR category = 'GASTO_NO_PLANEADO') THEN amount ELSE 0 END), 0)::FLOAT AS total_unplanned
+      FROM movements
+      WHERE user_id = $1
+        AND ${getPeriodDateBounds(validPeriod, 'movement_date')}
+      `,
+      [userId]
+    ),
+    query<GrossProfitDbRow>(
+      `
+      SELECT
+        COALESCE(SUM(m.amount), 0)::FLOAT AS ventas_productos,
+        COALESCE(SUM(
+          CASE
+            WHEN m.product_id IS NOT NULL AND p.id IS NOT NULL
+              THEN (COALESCE(p.unit_cost, 0) + COALESCE(p.extra_cost, 0)) * COALESCE(m.quantity, 1)
+            ELSE 0
+          END
+        ), 0)::FLOAT AS costo_mercancia_vendida,
+        COALESCE(SUM(
+          CASE
+            WHEN m.product_id IS NOT NULL AND p.id IS NOT NULL
+              THEN m.amount - ((COALESCE(p.unit_cost, 0) + COALESCE(p.extra_cost, 0)) * COALESCE(m.quantity, 1))
+            ELSE m.amount
+          END
+        ), 0)::FLOAT AS ganancia_bruta_real
+      FROM movements m
+      LEFT JOIN products p ON m.product_id = p.id AND p.user_id = $1
+      WHERE m.user_id = $1
+        AND m.type = 'ENTRADA'
+        AND m.category = 'VENTA_PRODUCTO'
+        AND ${getPeriodDateBounds(validPeriod, 'm.movement_date')}
+      `,
+      [userId]
+    ),
+    query<ExpenseCategoryDbRow>(
+      `
+      SELECT
+        category,
+        COALESCE(SUM(amount), 0)::FLOAT AS amount
+      FROM movements
+      WHERE user_id = $1
+        AND type = 'SALIDA'
+        AND ${getPeriodDateBounds(validPeriod, 'movement_date')}
+      GROUP BY category
+      ORDER BY amount DESC
+      `,
+      [userId]
+    ),
+    query<CashFlowPointDbRow>(getCashFlowSeriesQuery(validPeriod), [userId]),
+    getActiveReminders(userId),
+    getRecentMovements(userId, 40),
+  ]);
+
+  const totalsRow = periodTotalsRes.rows[0] || {
+    entradas_periodo: 0,
+    salidas_periodo: 0,
+    total_unplanned: 0,
+  };
+  const entradas_periodo = roundMoney(Number(totalsRow.entradas_periodo) || 0);
+  const salidas_periodo = roundMoney(Number(totalsRow.salidas_periodo) || 0);
+  const flujo_neto_periodo = roundMoney(entradas_periodo - salidas_periodo);
+
+  const gpRow = grossProfitRes.rows[0] || {
+    ventas_productos: 0,
+    costo_mercancia_vendida: 0,
+    ganancia_bruta_real: 0,
+  };
+  const ventas_productos = roundMoney(Number(gpRow.ventas_productos) || 0);
+  const costo_mercancia_vendida = roundMoney(Number(gpRow.costo_mercancia_vendida) || 0);
+  const ganancia_bruta_real = roundMoney(Number(gpRow.ganancia_bruta_real) || 0);
+  const margen_bruto_pct =
+    ventas_productos > 0 ? roundMoney((ganancia_bruta_real / ventas_productos) * 100) : 0;
+
+  const total_unplanned = roundMoney(Number(totalsRow.total_unplanned) || 0);
+  const pct_unplanned =
+    salidas_periodo > 0 ? roundMoney((total_unplanned / salidas_periodo) * 100) : 0;
+
+  const desglose_gastos: ExpenseCategoryBreakdown[] = expenseCategoriesRes.rows.map((r) => {
+    const amt = roundMoney(Number(r.amount) || 0);
+    const pct = salidas_periodo > 0 ? roundMoney((amt / salidas_periodo) * 100) : 0;
+    const label = formatCategory(r.category);
+    return {
+      category: r.category,
+      label,
+      amount: amt,
+      percentage: pct,
+      categoria: r.category,
+      nombre: label,
+      monto: amt,
+      porcentaje: pct,
+    };
+  });
+
+  const gastos_no_planeados: UnplannedExpensesSummary = {
+    total: total_unplanned,
+    percentage: pct_unplanned,
+  };
+
+  const serie_flujo_caja: CashFlowPoint[] = seriesRes.rows.map((r) => ({
+    fecha: String(r.fecha),
+    etiqueta: String(r.etiqueta),
+    entradas: roundMoney(Number(r.entradas) || 0),
+    salidas: roundMoney(Number(r.salidas) || 0),
+    neto: roundMoney(Number(r.neto) || 0),
+  }));
+
+  const urgentList = activeReminders.filter(
+    (r) => !r.is_completed && Number(r.days_remaining) <= 3
+  );
+  const urgentes_count = urgentList.length;
+  const urgentes_total = roundMoney(
+    urgentList.reduce((sum, r) => sum + (Number(r.amount) || 0), 0)
+  );
+
+  return {
+    period: validPeriod,
+    periodo: validPeriod,
+    disponible_actual: roundMoney(vision.disponible_actual),
+    disponible_hoy: roundMoney(vision.disponible_actual),
+    entradas_periodo,
+    total_entradas_periodo: entradas_periodo,
+    salidas_periodo,
+    total_salidas_periodo: salidas_periodo,
+    flujo_neto_periodo,
+    rendimiento_neto: flujo_neto_periodo,
+    ganancia_bruta_real,
+    margen_bruto_pct,
+    ventas_productos,
+    costo_mercancia_vendida,
+    desglose_gastos,
+    gastos_no_planeados,
+    gastos_no_planeados_total: total_unplanned,
+    gastos_no_planeados_pct: pct_unplanned,
+    alerta_fuga_no_planeados: {
+      hay_fuga: total_unplanned > 0,
+      total_no_planeado: total_unplanned,
+      porcentaje_sobre_salidas: pct_unplanned,
+      conteo: total_unplanned > 0 ? 1 : 0,
+    },
+    serie_flujo_caja,
+    urgentes_count,
+    urgentes_total,
+    obligaciones_pendientes: {
+      total_urgentes: urgentes_count,
+      monto_total: urgentes_total,
+      vencidas_conteo: urgentList.filter((r) => Number(r.days_remaining) < 0).length,
+      items: urgentList,
+    },
+    vision,
+    movements: recentMovements,
+    reminders: activeReminders,
   };
 }

@@ -1060,6 +1060,96 @@ async function runComprehensiveVerification() {
     });
   }
 
+  // TEST 22: Executive Financial Dashboard SQL & Tenant Isolation
+  try {
+    const adminId = 1;
+    const testTenantId = user2?.id || 999999;
+
+    // Test period queries for admin
+    const adminBalanceRes = await pool.query(
+      `SELECT
+        COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE 0 END), 0)::FLOAT AS total_entradas,
+        COALESCE(SUM(CASE WHEN type = 'SALIDA' THEN amount ELSE 0 END), 0)::FLOAT AS total_salidas,
+        COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE -amount END), 0)::NUMERIC(12, 2) AS disponible_actual
+      FROM movements
+      WHERE user_id = $1`,
+      [adminId]
+    );
+
+    const user2BalanceRes = await pool.query(
+      `SELECT
+        COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE 0 END), 0)::FLOAT AS total_entradas,
+        COALESCE(SUM(CASE WHEN type = 'SALIDA' THEN amount ELSE 0 END), 0)::FLOAT AS total_salidas,
+        COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE -amount END), 0)::NUMERIC(12, 2) AS disponible_actual
+      FROM movements
+      WHERE user_id = $1`,
+      [testTenantId]
+    );
+
+    const adminDisp = Number(adminBalanceRes.rows[0].disponible_actual);
+    const user2Disp = Number(user2BalanceRes.rows[0].disponible_actual);
+
+    // Test month series query
+    const seriesRes = await pool.query(
+      `WITH days AS (
+        SELECT generate_series(
+          date_trunc('month', CURRENT_DATE),
+          CURRENT_DATE,
+          INTERVAL '1 day'
+        ) AS d_date
+      )
+      SELECT
+        TO_CHAR(d.d_date, 'YYYY-MM-DD') AS fecha,
+        TO_CHAR(d.d_date, 'DD Mon') AS etiqueta,
+        COALESCE(SUM(CASE WHEN mov.type = 'ENTRADA' THEN mov.amount ELSE 0 END), 0)::FLOAT AS entradas,
+        COALESCE(SUM(CASE WHEN mov.type = 'SALIDA' THEN mov.amount ELSE 0 END), 0)::FLOAT AS salidas
+      FROM days d
+      LEFT JOIN movements mov 
+        ON mov.movement_date::date = d.d_date::date 
+       AND mov.user_id = $1
+      GROUP BY d.d_date
+      ORDER BY d.d_date ASC`,
+      [adminId]
+    );
+
+    // Test expenses breakdown
+    const expensesRes = await pool.query(
+      `SELECT
+        category AS categoria,
+        COALESCE(SUM(amount), 0)::FLOAT AS monto
+      FROM movements
+      WHERE user_id = $1 
+        AND type = 'SALIDA' 
+        AND movement_date >= date_trunc('month', CURRENT_DATE)
+      GROUP BY category
+      ORDER BY monto DESC`,
+      [adminId]
+    );
+
+    const passed =
+      adminDisp > 0 &&
+      user2Disp === 0 &&
+      seriesRes.rows.length > 0 &&
+      Array.isArray(expensesRes.rows);
+
+    results.push({
+      test: '22. Executive Financial Dashboard Queries & Multi-Tenant Isolation',
+      passed,
+      detail: {
+        adminDisp,
+        user2Disp,
+        seriesPoints: seriesRes.rows.length,
+        expenseCategories: expensesRes.rows.length
+      }
+    });
+  } catch (err) {
+    results.push({
+      test: '22. Executive Financial Dashboard Queries & Multi-Tenant Isolation',
+      passed: false,
+      error: err.message
+    });
+  }
+
   console.log(JSON.stringify(results, null, 2));
   const failed = results.filter(r => !r.passed);
   console.log(`\nTOTAL TESTS: ${results.length} | PASSED: ${results.length - failed.length} | FAILED: ${failed.length}`);

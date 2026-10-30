@@ -1,348 +1,493 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import Pagination from './components/Pagination';
-import EntradaModal from './components/EntradaModal';
-import SalidaModal from './components/SalidaModal';
-import { formatDate, formatCategory } from '@/lib/formatters';
+import {
+  EntradaModal,
+  SalidaModal,
+  ArqueoModal,
+  BrutalistCashFlowChart,
+} from '@/app/components';
+import { formatCurrency, formatCategory } from '@/lib/formatters';
+import type { ExecutiveDashboardDTO } from '@/app/modules/movements/service';
 
-interface DashboardData {
-  vision: {
-    disponible_actual: number;
-    total_entradas: number;
-    total_salidas: number;
-    entradas_mes: number;
-    salidas_mes: number;
-  };
-  movements: Array<{
-    id: number;
-    type: string;
-    category: string;
-    amount: number;
-    description: string;
-    movement_date: string;
-  }>;
-  reminders?: Array<{
-    id: number;
-    title: string;
-    amount: number;
-    category: string;
-    frequency: string;
-    due_date: string;
-    days_remaining: number;
-    is_completed: boolean;
-  }>;
-}
+export type DashboardPeriod = 'este-mes' | 'mes-anterior' | 'ultimos-30-dias' | 'este-ano';
+
+const PERIOD_OPTIONS: { id: DashboardPeriod; label: string }[] = [
+  { id: 'este-mes', label: '[ESTE MES]' },
+  { id: 'mes-anterior', label: '[MES ANTERIOR]' },
+  { id: 'ultimos-30-dias', label: '[ÚLTIMOS 30 DÍAS]' },
+  { id: 'este-ano', label: '[ESTE AÑO]' },
+];
 
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<ExecutiveDashboardDTO | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<DashboardPeriod>('este-mes');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 8;
+
+  // Modales operativos
   const [isEntradaOpen, setIsEntradaOpen] = useState(false);
   const [isSalidaOpen, setIsSalidaOpen] = useState(false);
+  const [isArqueoOpen, setIsArqueoOpen] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async (period: DashboardPeriod) => {
     try {
       setLoading(true);
-      const res = await fetch('/api/dashboard');
+      setError('');
+      const res = await fetch(`/api/dashboard?period=${period}`);
       if (res.status === 401) {
         window.location.href = '/login';
         return;
       }
       if (!res.ok) {
-        throw new Error('No se pudieron cargar los datos.');
+        throw new Error('No se pudieron cargar los datos del dashboard.');
       }
-      const json = await res.json();
+      const json: ExecutiveDashboardDTO = await res.json();
       setData(json);
-    } catch (err: any) {
-      setError(err.message || 'Error de conexión');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error de conexión con el servidor.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
   }, []);
 
-  if (loading) {
-    return (
-      <div className="py-16 text-center">
-        <div className="inline-block border border-black p-6 bg-white font-mono text-xs uppercase tracking-widest text-black">
-          Cargando información...
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    loadData(selectedPeriod);
+  }, [selectedPeriod, loadData]);
 
-  if (error || !data) {
-    return (
-      <main className="py-8 space-y-6">
-        <h1 className="text-xl font-bold font-mono tracking-tight uppercase text-black">
-          Error al cargar datos
-        </h1>
-        <div className="border border-black bg-black text-white p-4 font-mono text-xs uppercase">
-          {error || 'No fue posible obtener los datos de la caja.'}
-        </div>
-        <button
-          type="button"
-          onClick={loadData}
-          className="border border-black bg-white text-black hover:bg-black hover:text-white transition-none px-6 py-2 font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
-        >
-          Reintentar carga
-        </button>
-      </main>
-    );
-  }
+  const handlePeriodChange = (period: DashboardPeriod) => {
+    if (period === selectedPeriod) return;
+    setSelectedPeriod(period);
+  };
 
-  const { vision, movements, reminders } = data;
+  const handleRefresh = () => {
+    loadData(selectedPeriod);
+  };
 
-  // Filtrado de obligaciones pendientes urgentes (vencidas o a vencer en <= 3 días)
-  const urgentReminders = (reminders || []).filter(
-    (r) => !r.is_completed && r.days_remaining <= 3
-  );
-  const urgentCount = urgentReminders.length;
-  const urgentTotal = urgentReminders.reduce(
-    (acc, r) => acc + (Number(r.amount) || 0),
-    0
-  );
-  const overdueCount = urgentReminders.filter((r) => r.days_remaining < 0).length;
+  const currentPeriodOption =
+    PERIOD_OPTIONS.find((p) => p.id === selectedPeriod) || PERIOD_OPTIONS[0];
 
-  const flujoNetoMes = (vision.entradas_mes || 0) - (vision.salidas_mes || 0);
+  const dineroDisponible = data?.disponible_hoy ?? data?.disponible_actual ?? 0;
+  const rendimientoNeto = data?.rendimiento_neto ?? data?.flujo_neto_periodo ?? 0;
+  const entradasPeriodo = data?.total_entradas_periodo ?? data?.entradas_periodo ?? 0;
+  const salidasPeriodo = data?.total_salidas_periodo ?? data?.salidas_periodo ?? 0;
+  const gananciaBruta = data?.ganancia_bruta_real ?? 0;
+  const margenBruto = data?.margen_bruto_pct ?? 0;
+
+  const hayFuga =
+    data?.alerta_fuga_no_planeados?.hay_fuga ||
+    (data?.gastos_no_planeados_total ?? 0) > 0 ||
+    (data?.gastos_no_planeados?.total ?? 0) > 0;
+  const montoFuga =
+    data?.alerta_fuga_no_planeados?.total_no_planeado ??
+    data?.gastos_no_planeados_total ??
+    data?.gastos_no_planeados?.total ??
+    0;
+  const pctFuga =
+    data?.alerta_fuga_no_planeados?.porcentaje_sobre_salidas ??
+    data?.gastos_no_planeados_pct ??
+    data?.gastos_no_planeados?.percentage ??
+    0;
+  const conteoFuga = data?.alerta_fuga_no_planeados?.conteo || 1;
+
+  const urgentesTotalCount =
+    data?.obligaciones_pendientes?.total_urgentes ?? data?.urgentes_count ?? 0;
+  const urgentesMonto =
+    data?.obligaciones_pendientes?.monto_total ?? data?.urgentes_total ?? 0;
+  const urgentesVencidasCount =
+    data?.obligaciones_pendientes?.vencidas_conteo ??
+    (data?.reminders || []).filter((r) => Number(r.days_remaining) < 0).length;
+  const urgentesList =
+    data?.obligaciones_pendientes?.items ??
+    (data?.reminders || []).filter((r) => !r.is_completed && Number(r.days_remaining) <= 3);
 
   return (
     <main className="space-y-8 py-4">
-      {/* Encabezado */}
-      <header className="pb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-black uppercase">
-          Resumen Financiero
-        </h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsEntradaOpen(true)}
-            className="border border-black bg-black text-white hover:bg-white hover:text-black transition-none py-2 px-4 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer"
-          >
-            + Registrar Entrada
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsSalidaOpen(true)}
-            className="border border-black bg-white text-black hover:bg-black hover:text-white transition-none py-2 px-4 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer"
-          >
-            - Registrar Salida
-          </button>
+      {/* Cabecera Principal y Barra de Acciones */}
+      <header className="space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-black uppercase">
+              Dashboard Financiero Ejecutivo
+            </h1>
+            <p className="text-xs font-mono text-black uppercase mt-1">
+              Control de liquidez, rentabilidad y flujo monetario en tiempo real
+            </p>
+          </div>
+
+          {/* Accesos directos operativos: Arqueo, Entrada, Salida */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsArqueoOpen(true)}
+              className="h-9 border border-black bg-white text-black hover:bg-black hover:text-white transition-none px-3 font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              [ARQUEO DE CAJA]
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsEntradaOpen(true)}
+              className="h-9 border border-black bg-black text-white hover:bg-white hover:text-black transition-none px-3 font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              + Registrar Entrada
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSalidaOpen(true)}
+              className="h-9 border border-black bg-white text-black hover:bg-black hover:text-white transition-none px-3 font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              - Registrar Salida
+            </button>
+          </div>
+        </div>
+
+        {/* Selector de Período en la cabecera (botones de altura universal h-9) */}
+        <div
+          className="flex flex-wrap items-center gap-2 pt-2 border-t border-black"
+          role="group"
+          aria-label="Selector de período de análisis financiero"
+        >
+          <span className="text-xs font-mono font-bold uppercase tracking-wider text-black mr-2">
+            PERÍODO:
+          </span>
+          {PERIOD_OPTIONS.map((opt) => {
+            const isActive = opt.id === selectedPeriod;
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => handlePeriodChange(opt.id)}
+                aria-pressed={isActive}
+                className={`h-9 px-3 border border-black font-mono text-xs font-bold uppercase tracking-wider transition-none ${
+                  isActive
+                    ? 'bg-black text-white cursor-default'
+                    : 'bg-white text-black hover:bg-black hover:text-white cursor-pointer'
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       </header>
 
-      {/* Resumen Financiero Ejecutivo: Hero de Balance y Desglose Mensual */}
-      <section className="space-y-4">
-        {/* TARJETA HERO: DINERO DISPONIBLE HOY */}
-        <div className="border border-black bg-black text-white p-6 sm:p-8">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-            <div>
-              <p className="text-xs font-mono font-bold uppercase tracking-widest text-white">
-                Dinero disponible
-              </p>
-              <div className="mt-2 text-3xl sm:text-5xl font-mono font-bold tracking-tight text-white tabular-nums">
-                $ {Math.round(vision.disponible_actual).toLocaleString('es-CO')}{' '}
-                <span className="text-sm sm:text-base font-normal">COP</span>
-              </div>
-            </div>
-            <div className="flex sm:flex-col sm:items-end justify-between gap-1 pt-2 sm:pt-0">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-white">
-                Rendimiento neto mes
-              </span>
-              <span className="text-base sm:text-lg font-mono font-bold tabular-nums text-white">
-                {flujoNetoMes >= 0 ? '+' : '-'} $ {Math.round(Math.abs(flujoNetoMes)).toLocaleString('es-CO')}
-              </span>
-            </div>
+      {/* Manejo de Estados de Carga y Error */}
+      {loading ? (
+        <div className="py-16 text-center">
+          <div className="inline-block border border-black p-6 bg-white font-mono text-xs uppercase tracking-widest text-black font-bold">
+            Cargando tablero financiero...
           </div>
         </div>
-
-        {/* DESGLOSE DEL MES (ENTRADAS VS SALIDAS) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* ENTRADAS DEL MES */}
-          <div className="border border-black bg-white p-5 flex flex-col justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-black">
-              Entradas del mes
-            </span>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-mono font-bold tracking-tight text-black tabular-nums">
-                + $ {Math.round(vision.entradas_mes || 0).toLocaleString('es-CO')}
-              </div>
-              <div className="mt-3 flex items-center justify-between text-xs font-mono text-black uppercase">
-                <span>Total histórico</span>
-                <span className="tabular-nums font-bold">
-                  + $ {Math.round(vision.total_entradas).toLocaleString('es-CO')}
-                </span>
-              </div>
-            </div>
+      ) : error || !data ? (
+        <section className="space-y-4">
+          <div className="border border-black bg-black text-white p-4 font-mono text-xs uppercase font-bold">
+            {error || 'No fue posible obtener los datos de la caja.'}
           </div>
-
-          {/* SALIDAS DEL MES */}
-          <div className="border border-black bg-white p-5 flex flex-col justify-between">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-black">
-              Salidas del mes
-            </span>
-            <div className="mt-4">
-              <div className="text-2xl sm:text-3xl font-mono font-bold tracking-tight text-black tabular-nums">
-                - $ {Math.round(vision.salidas_mes || 0).toLocaleString('es-CO')}
-              </div>
-              <div className="mt-3 flex items-center justify-between text-xs font-mono text-black uppercase">
-                <span>Total histórico</span>
-                <span className="tabular-nums font-bold">
-                  - $ {Math.round(vision.total_salidas).toLocaleString('es-CO')}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Banner de alerta financiera (Pagos vencidos / próximos) */}
-      {urgentCount > 0 && (
-        <section aria-label="Alerta de obligaciones financieras pendientes">
-          <Link
-            href="/recordatorios"
-            className="block border border-black bg-black text-white hover:bg-white hover:text-black transition-none p-3.5 sm:p-4 font-mono text-xs font-bold uppercase tracking-wider no-underline cursor-pointer"
+          <button
+            type="button"
+            onClick={() => loadData(selectedPeriod)}
+            className="h-9 border border-black bg-white text-black hover:bg-black hover:text-white transition-none px-6 font-mono text-xs font-bold uppercase tracking-wider cursor-pointer"
           >
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <span>
-                [!] ATENCIÓN: {urgentCount}{' '}
-                {urgentCount === 1 ? 'OBLIGACIÓN PENDIENTE' : 'OBLIGACIONES PENDIENTES'}
-                {overdueCount > 0 ? ` (${overdueCount} VENCIDA${overdueCount > 1 ? 'S' : ''})` : ''}{' '}
-                (TOTAL: $ {Math.round(urgentTotal).toLocaleString('es-CO')})
-              </span>
-              <span className="underline whitespace-nowrap font-bold">
-                [VER RECORDATORIOS &rarr;]
-              </span>
-            </div>
-          </Link>
+            Reintentar carga
+          </button>
         </section>
-      )}
-
-      {/* Accesos directos */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
-          Accesos directos
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Link
-            href="/movimientos"
-            className="flex items-center justify-between border border-black bg-white hover:bg-black hover:text-white transition-none p-4 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer no-underline text-black"
+      ) : (
+        <>
+          {/* Tarjeta Hero Financiero */}
+          <section
+            aria-label="Dinero disponible y balance neto"
+            className="border border-black bg-black text-white p-6 sm:p-8"
           >
-            <span>Ver y registrar movimientos</span>
-            <span className="font-mono">→</span>
-          </Link>
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
+              <div>
+                <p className="text-xs font-mono font-bold uppercase tracking-widest text-white">
+                  Dinero disponible hoy (total caja / bancos)
+                </p>
+                <div className="mt-2 text-3xl sm:text-5xl font-mono font-bold tracking-tight text-white tabular-nums">
+                  $ {formatCurrency(dineroDisponible)}{' '}
+                  <span className="text-sm sm:text-base font-normal">COP</span>
+                </div>
+              </div>
+              <div className="flex sm:flex-col sm:items-end justify-between gap-1 pt-4 sm:pt-0 border-t sm:border-t-0 border-white">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white">
+                  Rendimiento neto ({currentPeriodOption.label.replace(/[\[\]]/g, '')})
+                </span>
+                <span className="text-xl sm:text-2xl font-mono font-bold tabular-nums text-white">
+                  {rendimientoNeto >= 0 ? '+' : '-'} ${' '}
+                  {formatCurrency(Math.abs(rendimientoNeto))}
+                </span>
+              </div>
+            </div>
+          </section>
 
-          <Link
-            href="/productos"
-            className="flex items-center justify-between border border-black bg-white hover:bg-black hover:text-white transition-none p-4 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer no-underline text-black"
+          {/* Tira Métrica de Desempeño */}
+          <section
+            aria-label="Métricas de desempeño financiero del período"
+            className="border border-black bg-white flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-black font-mono text-xs"
           >
-            <span>Ver y administrar productos</span>
-            <span className="font-mono">→</span>
-          </Link>
-        </div>
-      </section>
+            {/* Ganancia Bruta Real Estimada */}
+            <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+              <span className="font-bold uppercase tracking-wider text-black">
+                Ganancia bruta real estimada
+              </span>
+              <div className="mt-3">
+                <div className="text-xl sm:text-2xl font-bold tracking-tight text-black tabular-nums">
+                  $ {formatCurrency(gananciaBruta)}
+                </div>
+                <div className="mt-2 text-[11px] uppercase tracking-wider font-bold text-black">
+                  Margen bruto: <span className="tabular-nums">{margenBruto}%</span>
+                </div>
+              </div>
+            </div>
 
-      {/* Tabla de últimos movimientos */}
-      <section className="space-y-3">
-        <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
-          Últimos movimientos
-        </h2>
+            {/* Entradas del período */}
+            <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+              <span className="font-bold uppercase tracking-wider text-black">
+                Entradas del período
+              </span>
+              <div className="mt-3">
+                <div className="text-xl sm:text-2xl font-bold tracking-tight text-black tabular-nums">
+                  + $ {formatCurrency(entradasPeriodo)}
+                </div>
+                <div className="mt-2 text-[11px] uppercase tracking-wider text-black">
+                  Ingresos totales registrados
+                </div>
+              </div>
+            </div>
 
-        {movements.length === 0 ? (
-          <div className="border border-black p-8 text-center bg-white font-mono text-xs uppercase text-black">
-            No hay movimientos registrados en la base de datos.
-          </div>
-        ) : (
-          <div className="border border-black bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed border-collapse text-left font-mono text-xs">
-                <thead>
-                  <tr className="bg-black text-white">
-                    <th scope="col" className="w-[15%] p-3 border-r border-white font-bold uppercase tracking-wider">
-                      Fecha
-                    </th>
-                    <th scope="col" className="w-[15%] p-3 border-r border-white font-bold uppercase tracking-wider">
-                      Tipo
-                    </th>
-                    <th scope="col" className="w-[18%] p-3 border-r border-white font-bold uppercase tracking-wider">
-                      Categoría
-                    </th>
-                    <th scope="col" className="w-[37%] p-3 border-r border-white font-bold uppercase tracking-wider">
-                      Concepto / Descripción
-                    </th>
-                    <th scope="col" className="w-[15%] p-3 font-bold uppercase tracking-wider text-right">
-                      Monto ($)
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-black bg-white">
-                  {movements
-                    .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
-                    .map((m) => (
-                      <tr
-                        key={m.id}
-                        className="transition-none bg-white"
-                      >
-                        <td className="p-3 border-r border-black tabular-nums whitespace-nowrap text-black">
-                          {formatDate(m.movement_date)}
-                        </td>
-                        <td className="p-3 border-r border-black whitespace-nowrap">
-                          {m.type === 'ENTRADA' ? (
-                            <span className="border border-black bg-white text-black px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider inline-block">
-                              [+] ENTRADA
+            {/* Salidas del período */}
+            <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
+              <span className="font-bold uppercase tracking-wider text-black">
+                Salidas del período
+              </span>
+              <div className="mt-3">
+                <div className="text-xl sm:text-2xl font-bold tracking-tight text-black tabular-nums">
+                  - $ {formatCurrency(salidasPeriodo)}
+                </div>
+                <div className="mt-2 text-[11px] uppercase tracking-wider text-black">
+                  Egresos totales acumulados
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Gráfico de Flujo de Caja Monetario Brutalista */}
+          <section className="space-y-3" aria-label="Gráfico de flujo de caja">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
+                Flujo de caja monetario
+              </h2>
+              <span className="text-[11px] font-mono uppercase text-black font-bold">
+                PERÍODO: {currentPeriodOption.label.replace(/[\[\]]/g, '')}
+              </span>
+            </div>
+            <BrutalistCashFlowChart data={data.serie_flujo_caja} height={280} />
+          </section>
+
+          {/* Desglose de Gastos por Categoría */}
+          <section className="space-y-4" aria-label="Desglose de egresos por categoría">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
+                Desglose de gastos por categoría
+              </h2>
+              <span className="text-[11px] font-mono uppercase text-black font-bold tabular-nums">
+                TOTAL: - $ {formatCurrency(salidasPeriodo)}
+              </span>
+            </div>
+
+            {/* Alerta destacada de fuga de gastos no planeados */}
+            {hayFuga && (
+              <div
+                role="alert"
+                className="border border-black bg-black text-white p-4 font-mono text-xs uppercase"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <span className="font-bold tracking-wider">
+                    [!] ALERTA DE FUGA: SE DETECTARON GASTOS NO PLANEADOS POR ${' '}
+                    {formatCurrency(montoFuga)} ({pctFuga}% DEL TOTAL DE EGRESOS).
+                  </span>
+                  <span className="text-[10px] font-bold tracking-widest border border-white px-2 py-0.5 whitespace-nowrap self-start sm:self-auto">
+                    {conteoFuga} REGISTRO{conteoFuga > 1 ? 'S' : ''}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {(!data.desglose_gastos || data.desglose_gastos.length === 0) ? (
+              <div className="border border-black p-8 text-center bg-white font-mono text-xs uppercase text-black font-bold">
+                No hay egresos registrados en el período seleccionado.
+              </div>
+            ) : (
+              <div className="border border-black bg-white divide-y divide-black font-mono text-xs">
+                {data.desglose_gastos.map((item) => {
+                  const catName =
+                    (item as any).nombre || item.label || formatCategory(item.category);
+                  const catMonto =
+                    (item as any).monto ?? item.amount ?? 0;
+                  const catPct =
+                    (item as any).porcentaje ?? item.percentage ?? 0;
+                  const catKey =
+                    (item as any).categoria || item.category || catName;
+
+                  return (
+                    <div key={catKey} className="p-4 space-y-2">
+                      <div className="flex items-center justify-between gap-4 font-bold uppercase">
+                        <span className="truncate">{catName}</span>
+                        <div className="flex items-center gap-4 shrink-0 tabular-nums">
+                          <span>{catPct}%</span>
+                          <span>- $ {formatCurrency(catMonto)}</span>
+                        </div>
+                      </div>
+                      {/* Barra visual brutalista: 10px alto, contenedor blanco con borde negro, relleno negro */}
+                      <div className="h-[10px] w-full border border-black bg-white overflow-hidden">
+                        <div
+                          className="h-full bg-black transition-none"
+                          style={{ width: `${Math.min(100, Math.max(0, catPct))}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Sección de Obligaciones Financieras Pendientes */}
+          <section className="space-y-3" aria-label="Obligaciones financieras pendientes">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
+                Obligaciones financieras pendientes
+              </h2>
+              <Link
+                href="/recordatorios"
+                className="font-mono text-xs font-bold uppercase underline text-black hover:bg-black hover:text-white hover:no-underline px-1 transition-none"
+              >
+                [VER TODOS LOS RECORDATORIOS →]
+              </Link>
+            </div>
+
+            {urgentesTotalCount === 0 ? (
+              <div className="border border-black p-6 bg-white font-mono text-xs uppercase text-black flex flex-col sm:flex-row items-center justify-between gap-4">
+                <span className="font-bold">
+                  NO HAY OBLIGACIONES PENDIENTES URGENTES EN ESTE MOMENTO.
+                </span>
+                <Link
+                  href="/recordatorios"
+                  className="border border-black bg-white text-black hover:bg-black hover:text-white transition-none px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider shrink-0 no-underline"
+                >
+                  Programar obligación →
+                </Link>
+              </div>
+            ) : (
+              <div className="border border-black bg-white">
+                <div className="p-4 bg-black text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 font-mono text-xs uppercase font-bold">
+                  <span>
+                    [!] {urgentesTotalCount} COMPROMISO{urgentesTotalCount > 1 ? 'S' : ''} URGENTE{urgentesTotalCount > 1 ? 'S' : ''}
+                    {urgentesVencidasCount > 0 &&
+                      ` (${urgentesVencidasCount} VENCIDA${
+                        urgentesVencidasCount > 1 ? 'S' : ''
+                      })`}
+                  </span>
+                  <span className="tabular-nums">
+                    TOTAL: $ {formatCurrency(urgentesMonto)}
+                  </span>
+                </div>
+                <div className="divide-y divide-black font-mono text-xs">
+                  {urgentesList.map((rem) => (
+                    <div
+                      key={rem.id}
+                      className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          {Number(rem.days_remaining) < 0 ? (
+                            <span className="border border-black bg-black text-white px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                              [VENCIDO HACE {Math.abs(Number(rem.days_remaining))} DÍAS]
+                            </span>
+                          ) : Number(rem.days_remaining) === 0 ? (
+                            <span className="border border-black bg-black text-white px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                              [VENCE HOY]
                             </span>
                           ) : (
-                            <span className="border border-black bg-black text-white px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider inline-block">
-                              [-] SALIDA
+                            <span className="border border-black bg-white text-black px-1.5 py-0.5 text-[10px] font-bold uppercase">
+                              [VENCE EN {rem.days_remaining} DÍAS]
                             </span>
                           )}
-                        </td>
-                        <td className="p-3 border-r border-black whitespace-nowrap">
-                          <span className="border border-black px-1.5 py-0.5 text-[10px] uppercase font-mono tracking-wider bg-white text-black inline-block">
-                            {formatCategory(m.category)}
-                          </span>
-                        </td>
-                        <td className="p-3 border-r border-black font-medium text-black truncate" title={m.description}>
-                          {m.description}
-                        </td>
-                        <td className="p-3 text-right tabular-nums font-bold whitespace-nowrap text-black">
-                          {m.type === 'ENTRADA' ? '+' : '-'} $
-                          {Math.round(m.amount).toLocaleString('es-CO')}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+                          <span className="font-bold text-black uppercase">{rem.title}</span>
+                        </div>
+                        <div className="text-[11px] text-black uppercase">
+                          Vence: {rem.due_date} | Categoría: {formatCategory(rem.category)}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                        <span className="font-bold tabular-nums text-black text-sm">
+                          $ {formatCurrency(rem.amount)}
+                        </span>
+                        <Link
+                          href="/recordatorios"
+                          className="border border-black bg-white text-black hover:bg-black hover:text-white transition-none px-3 py-1 text-[11px] font-bold uppercase tracking-wider no-underline"
+                        >
+                          Pagar →
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* Accesos Directos Operativos a Módulos */}
+          <section className="space-y-3" aria-label="Accesos directos a módulos operativos">
+            <h2 className="text-xs font-mono font-bold uppercase tracking-widest text-black">
+              Módulos del sistema
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Link
+                href="/movimientos"
+                className="flex items-center justify-between border border-black bg-white hover:bg-black hover:text-white transition-none p-4 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer no-underline text-black"
+              >
+                <span>Movimientos de caja</span>
+                <span className="font-mono">→</span>
+              </Link>
+
+              <Link
+                href="/productos"
+                className="flex items-center justify-between border border-black bg-white hover:bg-black hover:text-white transition-none p-4 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer no-underline text-black"
+              >
+                <span>Catálogo de productos</span>
+                <span className="font-mono">→</span>
+              </Link>
+
+              <Link
+                href="/recordatorios"
+                className="flex items-center justify-between border border-black bg-white hover:bg-black hover:text-white transition-none p-4 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer no-underline text-black"
+              >
+                <span>Control de recordatorios</span>
+                <span className="font-mono">→</span>
+              </Link>
             </div>
+          </section>
+        </>
+      )}
 
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.max(1, Math.ceil(movements.length / itemsPerPage))}
-              onPageChange={setCurrentPage}
-              totalItems={movements.length}
-              itemsPerPage={itemsPerPage}
-              itemName="movimientos"
-            />
-          </div>
-        )}
-      </section>
-
+      {/* Modales Modulares */}
+      <ArqueoModal
+        isOpen={isArqueoOpen}
+        onClose={() => setIsArqueoOpen(false)}
+        onMovementCreated={handleRefresh}
+      />
       <EntradaModal
         isOpen={isEntradaOpen}
         onClose={() => setIsEntradaOpen(false)}
-        onSuccess={loadData}
+        onSuccess={handleRefresh}
       />
       <SalidaModal
         isOpen={isSalidaOpen}
         onClose={() => setIsSalidaOpen(false)}
-        onSuccess={loadData}
+        onSuccess={handleRefresh}
       />
     </main>
   );

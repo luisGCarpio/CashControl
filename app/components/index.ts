@@ -19,3 +19,6 @@ export type { AlertsDrawerProps, BusinessAlert, AlertsResponseDTO, FilterScope }
 export { default as Sidebar } from './Sidebar';
 export { default as LayoutShell } from './LayoutShell';
 export { default as Pagination } from './Pagination';
+
+export { default as BrutalistCashFlowChart } from './BrutalistCashFlowChart';
+export type { BrutalistCashFlowChartProps, ChartDataPoint } from './BrutalistCashFlowChart';
