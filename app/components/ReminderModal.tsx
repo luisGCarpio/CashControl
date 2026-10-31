@@ -124,13 +124,13 @@ export default function ReminderModal({
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(data?.error || 'Error al programar el recordatorio.');
+        throw new Error(data?.error || 'Error al guardar la obligación.');
       }
 
       onSuccess();
       onClose();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error inesperado al programar el recordatorio.');
+      setErrorMsg(err.message || 'Error inesperado al guardar la obligación.');
     } finally {
       setSubmitting(false);
     }
@@ -158,13 +158,13 @@ export default function ReminderModal({
             id="reminder-modal-title"
             className="text-sm sm:text-base font-mono font-bold uppercase tracking-tight text-black m-0"
           >
-            NUEVO RECORDATORIO
+            REGISTRAR OBLIGACIÓN / PAGO RECURRENTE
           </h2>
 
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar modal de recordatorio"
+            aria-label="Cerrar modal de obligación"
             className="border border-black bg-white text-black hover:bg-black hover:text-white p-1 transition-none cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -349,7 +349,7 @@ export default function ReminderModal({
               disabled={submitting}
               className="border border-black bg-black text-white hover:bg-white hover:text-black py-2.5 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer transition-none disabled:opacity-35 text-center flex items-center justify-center gap-2"
             >
-              {submitting ? 'Programando...' : 'Programar Recordatorio'}
+              {submitting ? 'Guardando...' : 'Guardar Obligación'}
             </button>
           </div>
         </form>

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import Pagination from '../components/Pagination';
 import EntradaModal from '../components/EntradaModal';
 import SalidaModal from '../components/SalidaModal';
+import ArqueoModal from '../components/ArqueoModal';
 import { formatCategory, formatDate, CATEGORY_LABELS } from '@/lib/formatters';
 
 interface Movement {
@@ -51,6 +52,7 @@ export default function MovimientosPage() {
   // Modales
   const [isEntradaOpen, setIsEntradaOpen] = useState(false);
   const [isSalidaOpen, setIsSalidaOpen] = useState(false);
+  const [isArqueoOpen, setIsArqueoOpen] = useState(false);
 
   const loadData = async () => {
     try {
@@ -220,7 +222,14 @@ export default function MovimientosPage() {
             Movimientos de Caja
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setIsArqueoOpen(true)}
+            className="border border-black bg-white text-black hover:bg-black hover:text-white transition-none px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer"
+          >
+            [ARQUEO DE CAJA]
+          </button>
           <button
             type="button"
             onClick={() => setIsEntradaOpen(true)}
@@ -733,6 +742,12 @@ export default function MovimientosPage() {
       />
 
       {/* Modal para registrar Salida */}
+      <ArqueoModal
+        isOpen={isArqueoOpen}
+        onClose={() => setIsArqueoOpen(false)}
+        onMovementCreated={loadData}
+      />
+
       <SalidaModal
         isOpen={isSalidaOpen}
         onClose={() => setIsSalidaOpen(false)}
