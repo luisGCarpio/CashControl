@@ -1,6 +1,6 @@
 # DESIGN.md - Sistema de Diseño Brutalista Monocromático (B&W)
 
-Este documento define la especificación estricta de UI/UX para el proyecto **PULSO CAJA**.
+Este documento define la especificación estricta de UI/UX para el proyecto **CashControl**.
 Cualquier modificación o creación de interfaces debe cumplir rigurosamente estas reglas sin excepción.
 
 ---

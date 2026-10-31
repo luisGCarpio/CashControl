@@ -38,6 +38,9 @@ export default function LoginPage() {
       <div className="w-full max-w-md bg-white border border-black p-8 rounded-none">
         {/* Encabezado */}
         <div className="mb-6">
+          <div className="border border-black bg-black text-white py-1 px-3 text-xs font-bold font-mono uppercase tracking-wider text-center select-none inline-block mb-3">
+            CashControl
+          </div>
           <h1 className="text-xl font-bold font-mono tracking-tight text-black uppercase">
             Iniciar sesión
           </h1>

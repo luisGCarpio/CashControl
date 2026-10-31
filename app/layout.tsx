@@ -3,7 +3,7 @@ import './globals.css';
 import LayoutShell from './components/LayoutShell';
 
 export const metadata: Metadata = {
-  title: 'Pulso Caja - Control de Flujo e Inventario',
+  title: 'CashControl - Control de Caja e Inventario',
   description: 'Gestión de caja real, inventario y movimientos financieros.',
 };
 

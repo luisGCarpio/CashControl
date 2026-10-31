@@ -223,7 +223,7 @@ export default function ArqueoModal({
 
     const lines = [
       '========================================',
-      '   PULSO CAJA - ARQUEO DIARIO DE CAJA',
+      '   CASHCONTROL - ARQUEO DIARIO DE CAJA',
       `FECHA: ${selectedDate}`,
       '========================================',
       '',

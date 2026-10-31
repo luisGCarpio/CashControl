@@ -86,7 +86,7 @@ export default function Sidebar() {
       {/* Barra superior móvil (< 768px) */}
       <header className="md:hidden sticky top-0 z-40 bg-white border-b border-black px-4 py-3 flex items-center justify-between select-none">
         <div className="border border-black bg-black text-white py-1 px-3 text-xs font-bold uppercase tracking-wider text-center select-none inline-block">
-          copia wood
+          CashControl
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -131,7 +131,7 @@ export default function Sidebar() {
             <div className="flex flex-col">
               <div className="p-4 border-b border-black bg-white flex items-center justify-between gap-2">
                 <div className="w-full py-2.5 px-3 border border-black bg-black text-white text-xs font-bold uppercase tracking-wider text-center select-none">
-                  copia wood
+                  CashControl
                 </div>
                 <button
                   type="button"
@@ -204,7 +204,7 @@ export default function Sidebar() {
         <div className="flex flex-col">
           <div className="p-4 border-b border-black bg-white">
             <div className="w-full py-2.5 px-3 border border-black bg-black text-white text-xs font-bold uppercase tracking-wider text-center select-none">
-              copia wood
+              CashControl
             </div>
           </div>
 
