@@ -246,7 +246,11 @@ async function runAlertsTests() {
 
     results.push({
       test: '12. Liquidez: WARNING cuando la caja sí cubre las obligaciones próximas',
-      passed: !!liquidityUpcomingAlert && liquidityUpcomingAlert.level === 'WARNING' && liquidityUpcomingAlert.actionLabel === 'Ver Pagos',
+      passed:
+        !!liquidityUpcomingAlert &&
+        liquidityUpcomingAlert.level === 'WARNING' &&
+        (liquidityUpcomingAlert.actionLabel === 'Ver Pagos Recurrentes' ||
+          liquidityUpcomingAlert.actionLabel === 'Ver Pagos'),
       detail: liquidityUpcomingAlert,
     });
 

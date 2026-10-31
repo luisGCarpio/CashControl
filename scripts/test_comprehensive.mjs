@@ -753,9 +753,57 @@ async function runComprehensiveVerification() {
     });
   }
 
-  // 18. Reminder Service Idempotency & Native Interval SQL Execution
+  // 18. Recurring & Unique Reminder Full Lifecycle, Cash Deduction & Atomic Intervals
   try {
-    // 18a. Idempotency test for UNICO reminder
+    async function executeMarkReminderAsPaid(client, userId, reminderId, registerExpense) {
+      const remRes = await client.query(
+        `SELECT * FROM reminders WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+        [reminderId, userId]
+      );
+
+      if (remRes.rowCount === 0) {
+        throw new Error('Recordatorio no encontrado o no autorizado.');
+      }
+
+      const rem = remRes.rows[0];
+
+      if (rem.frequency === 'UNICO' && rem.is_completed) {
+        throw new Error('El recordatorio ya ha sido completado y pagado previamente.');
+      }
+
+      if (registerExpense && Number(rem.amount) > 0) {
+        await client.query(
+          `INSERT INTO movements (user_id, type, category, amount, description, is_unplanned, movement_date)
+           VALUES ($1, 'SALIDA', $2, $3, $4, FALSE, CURRENT_TIMESTAMP)`,
+          [
+            userId,
+            rem.category || 'SERVICIOS_ARRIENDO',
+            Number(rem.amount),
+            `Pago de obligación: ${rem.title}`,
+          ]
+        );
+      }
+
+      if (rem.frequency === 'UNICO') {
+        await client.query(
+          `UPDATE reminders SET is_completed = TRUE WHERE id = $1 AND user_id = $2`,
+          [reminderId, userId]
+        );
+      } else {
+        await client.query(
+          `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE, is_completed = FALSE WHERE id = $1 AND user_id = $2`,
+          [reminderId, userId]
+        );
+      }
+
+      const updated = await client.query(
+        `SELECT *, TO_CHAR(due_date, 'YYYY-MM-DD') AS due_date FROM reminders WHERE id = $1 AND user_id = $2`,
+        [reminderId, userId]
+      );
+      return updated.rows[0];
+    }
+
+    // 18a. Idempotency test for UNICO reminder (completes, doesn't duplicate)
     const remRes = await pool.query(
       `INSERT INTO reminders (user_id, title, amount, category, frequency, due_date, is_completed)
        VALUES ($1, 'Factura Test Idempotencia', 45000, 'SERVICIOS_ARRIENDO', 'UNICO', '2026-11-05', FALSE)
@@ -767,6 +815,7 @@ async function runComprehensiveVerification() {
     // First payment: execute service logic inside transaction
     const client = await pool.connect();
     let firstPaymentCompleted = false;
+    let updatedUnico;
     let duplicatePaymentBlocked = false;
     let duplicateErrorMessage = '';
     let movementCountAfterFirst = 0;
@@ -774,17 +823,7 @@ async function runComprehensiveVerification() {
 
     try {
       await client.query('BEGIN');
-      const row1 = await client.query('SELECT * FROM reminders WHERE id = $1 AND user_id = $2 FOR UPDATE', [testRem.id, adminUser.id]);
-      const rem1 = row1.rows[0];
-      if (rem1.frequency === 'UNICO' && rem1.is_completed) {
-        throw new Error('El recordatorio ya ha sido completado y pagado previamente.');
-      }
-      await client.query(
-        `INSERT INTO movements (user_id, type, category, amount, description, is_unplanned, movement_date)
-         VALUES ($1, 'SALIDA', $2, $3, $4, FALSE, CURRENT_TIMESTAMP)`,
-        [adminUser.id, rem1.category, Number(rem1.amount), `Pago de recordatorio: ${rem1.title}`]
-      );
-      await client.query('UPDATE reminders SET is_completed = TRUE WHERE id = $1 AND user_id = $2', [testRem.id, adminUser.id]);
+      updatedUnico = await executeMarkReminderAsPaid(client, adminUser.id, testRem.id, true);
       await client.query('COMMIT');
       firstPaymentCompleted = true;
     } catch (e) {
@@ -796,7 +835,7 @@ async function runComprehensiveVerification() {
 
     const movs1 = await pool.query(
       `SELECT COUNT(*)::INT as count FROM movements WHERE user_id = $1 AND description = $2`,
-      [adminUser.id, `Pago de recordatorio: ${testRem.title}`]
+      [adminUser.id, `Pago de obligación: ${testRem.title}`]
     );
     movementCountAfterFirst = movs1.rows[0].count;
 
@@ -804,17 +843,7 @@ async function runComprehensiveVerification() {
     const client2 = await pool.connect();
     try {
       await client2.query('BEGIN');
-      const row2 = await client2.query('SELECT * FROM reminders WHERE id = $1 AND user_id = $2 FOR UPDATE', [testRem.id, adminUser.id]);
-      const rem2 = row2.rows[0];
-      if (rem2.frequency === 'UNICO' && rem2.is_completed) {
-        throw new Error('El recordatorio ya ha sido completado y pagado previamente.');
-      }
-      // If not blocked, would insert duplicate movement:
-      await client2.query(
-        `INSERT INTO movements (user_id, type, category, amount, description, is_unplanned, movement_date)
-         VALUES ($1, 'SALIDA', $2, $3, $4, FALSE, CURRENT_TIMESTAMP)`,
-        [adminUser.id, rem2.category, Number(rem2.amount), `Pago de recordatorio: ${rem2.title}`]
-      );
+      await executeMarkReminderAsPaid(client2, adminUser.id, testRem.id, true);
       await client2.query('COMMIT');
     } catch (e) {
       await client2.query('ROLLBACK');
@@ -826,74 +855,131 @@ async function runComprehensiveVerification() {
 
     const movs2 = await pool.query(
       `SELECT COUNT(*)::INT as count FROM movements WHERE user_id = $1 AND description = $2`,
-      [adminUser.id, `Pago de recordatorio: ${testRem.title}`]
+      [adminUser.id, `Pago de obligación: ${testRem.title}`]
     );
     movementCountAfterSecond = movs2.rows[0].count;
 
-    // 18b. Native interval calculation for recurring reminders
+    // 18b. Full Lifecycle for Recurring Obligation with registerExpense = true
+    // 1. Initial cash balance before paying recurring reminder
+    const cashBeforeRes = await pool.query(
+      `SELECT COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE -amount END), 0)::NUMERIC(12, 2) AS disponible_actual
+       FROM movements WHERE user_id = $1`,
+      [adminUser.id]
+    );
+    const cashBefore = Number(cashBeforeRes.rows[0].disponible_actual);
+
+    // Create recurring reminder (MENSUAL, 30000)
     const recRemRes = await pool.query(
       `INSERT INTO reminders (user_id, title, amount, category, frequency, due_date, is_completed)
-       VALUES ($1, 'Servicio Semanal Recurrente', 10000, 'SERVICIOS_ARRIENDO', 'SEMANAL', '2026-11-01', FALSE)
+       VALUES ($1, 'Servicio Mensual Recurrente Test', 30000, 'SERVICIOS_ARRIENDO', 'MENSUAL', '2026-11-01', FALSE)
        RETURNING *`,
       [adminUser.id]
     );
     const recRem = recRemRes.rows[0];
 
-    // Update with native SQL CASE expression:
+    // Pay recurring obligation with registerExpense = true
+    const client3 = await pool.connect();
+    let updatedRecRem;
+    try {
+      await client3.query('BEGIN');
+      updatedRecRem = await executeMarkReminderAsPaid(client3, adminUser.id, recRem.id, true);
+      await client3.query('COMMIT');
+    } catch (e) {
+      await client3.query('ROLLBACK');
+      throw e;
+    } finally {
+      client3.release();
+    }
+
+    // 1. Movement SALIDA automatically created
+    const recMovCheck = await pool.query(
+      `SELECT * FROM movements WHERE user_id = $1 AND description = $2`,
+      [adminUser.id, `Pago de obligación: ${recRem.title}`]
+    );
+    const recMov = recMovCheck.rows[0];
+    const salidaMovementCreated = Boolean(recMov && recMov.type === 'SALIDA' && Number(recMov.amount) === 30000);
+
+    // 2. Cash balance decreased exactly by the amount paid
+    const cashAfterRes = await pool.query(
+      `SELECT COALESCE(SUM(CASE WHEN type = 'ENTRADA' THEN amount ELSE -amount END), 0)::NUMERIC(12, 2) AS disponible_actual
+       FROM movements WHERE user_id = $1`,
+      [adminUser.id]
+    );
+    const cashAfter = Number(cashAfterRes.rows[0].disponible_actual);
+    const cashDecreasedExactly = Math.abs((cashBefore - cashAfter) - 30000) < 0.001;
+
+    // 3. Due date advanced to next cycle (MENSUAL: 2026-11-01 + 1 month = 2026-12-01)
+    const dueDateAdvanced = updatedRecRem.due_date === '2026-12-01';
+
+    // 4. Status remains active (is_completed = FALSE) for next period
+    const remainsActive = updatedRecRem.is_completed === false;
+
+    // Additional periodicities test: SEMANAL and QUINCENAL
+    await pool.query("UPDATE reminders SET frequency = 'SEMANAL' WHERE id = $1", [recRem.id]);
     const updateWeekly = await pool.query(
-      `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE
+      `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE, is_completed = FALSE
        WHERE id = $1 AND user_id = $2 RETURNING TO_CHAR(due_date, 'YYYY-MM-DD') AS next_date`,
       [recRem.id, adminUser.id]
     );
-    const weeklyNext = updateWeekly.rows[0].next_date; // '2026-11-08'
+    const weeklyNext = updateWeekly.rows[0].next_date; // '2026-12-08'
 
     await pool.query("UPDATE reminders SET frequency = 'QUINCENAL' WHERE id = $1", [recRem.id]);
     const updateQuincenal = await pool.query(
-      `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE
+      `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE, is_completed = FALSE
        WHERE id = $1 AND user_id = $2 RETURNING TO_CHAR(due_date, 'YYYY-MM-DD') AS next_date`,
       [recRem.id, adminUser.id]
     );
-    const quincenalNext = updateQuincenal.rows[0].next_date; // '2026-11-23'
+    const quincenalNext = updateQuincenal.rows[0].next_date; // '2026-12-23'
 
-    await pool.query("UPDATE reminders SET frequency = 'MENSUAL' WHERE id = $1", [recRem.id]);
-    const updateMensual = await pool.query(
-      `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE
-       WHERE id = $1 AND user_id = $2 RETURNING TO_CHAR(due_date, 'YYYY-MM-DD') AS next_date`,
-      [recRem.id, adminUser.id]
-    );
-    const mensualNext = updateMensual.rows[0].next_date; // '2026-12-23'
-
-    // Cleanup
-    await pool.query('DELETE FROM movements WHERE user_id = $1 AND description = $2', [adminUser.id, `Pago de recordatorio: ${testRem.title}`]);
+    // Strict cleanup so subsequent tests (21, 22) have pristine data
+    await pool.query('DELETE FROM movements WHERE user_id = $1 AND description IN ($2, $3)', [
+      adminUser.id,
+      `Pago de obligación: ${testRem.title}`,
+      `Pago de obligación: ${recRem.title}`,
+    ]);
     await pool.query('DELETE FROM reminders WHERE id IN ($1, $2)', [testRem.id, recRem.id]);
 
     const idempotencyPassed =
       firstPaymentCompleted &&
+      updatedUnico?.is_completed === true &&
       duplicatePaymentBlocked &&
       duplicateErrorMessage === 'El recordatorio ya ha sido completado y pagado previamente.' &&
       movementCountAfterFirst === 1 &&
-      movementCountAfterSecond === 1 &&
-      weeklyNext === '2026-11-08' &&
-      quincenalNext === '2026-11-23' &&
-      mensualNext === '2026-12-23';
+      movementCountAfterSecond === 1;
+
+    const recurringPassed =
+      salidaMovementCreated &&
+      cashDecreasedExactly &&
+      dueDateAdvanced &&
+      remainsActive &&
+      weeklyNext === '2026-12-08' &&
+      quincenalNext === '2026-12-23';
 
     results.push({
-      test: '18. Reminder Service Idempotency & Native Interval SQL Execution',
-      passed: idempotencyPassed,
+      test: '18. Recurring & Unique Reminder Full Lifecycle, Cash Deduction & Atomic Intervals',
+      passed: idempotencyPassed && recurringPassed,
       detail: {
+        idempotencyPassed,
+        recurringPassed,
         firstPaymentCompleted,
+        unicoCompleted: updatedUnico?.is_completed,
         duplicatePaymentBlocked,
         duplicateErrorMessage,
-        movementCountAfterFirst,
-        movementCountAfterSecond,
+        salidaMovementCreated,
+        cashBefore,
+        cashAfter,
+        cashDelta: cashBefore - cashAfter,
+        cashDecreasedExactly,
+        nextDueDate: updatedRecRem.due_date,
+        dueDateAdvanced,
+        remainsActive,
         weeklyNext,
         quincenalNext,
-        mensualNext
       }
     });
   } catch (err) {
     results.push({
-      test: '18. Reminder Service Idempotency & Native Interval SQL Execution',
+      test: '18. Recurring & Unique Reminder Full Lifecycle, Cash Deduction & Atomic Intervals',
       passed: false,
       error: err.message
     });

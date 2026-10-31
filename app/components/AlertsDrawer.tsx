@@ -333,7 +333,13 @@ export default function AlertsDrawer({
                   onClick={onClose}
                   className="w-full h-9 border border-black bg-white text-black hover:bg-black hover:text-white px-3 text-xs font-mono font-bold uppercase tracking-wider transition-none no-underline cursor-pointer flex items-center justify-center text-center"
                 >
-                  <span>{alert.actionLabel ? `→ ${alert.actionLabel}` : '→ VER DETALLE'}</span>
+                  <span>
+                    {alert.scope === 'LIQUIDEZ'
+                      ? '→ Ver Pagos Recurrentes'
+                      : alert.actionLabel
+                      ? `→ ${alert.actionLabel}`
+                      : '→ VER DETALLE'}
+                  </span>
                 </Link>
               </div>
             </div>

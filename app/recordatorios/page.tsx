@@ -57,14 +57,14 @@ export default function RecordatoriosPage() {
         return;
       }
       if (!res.ok) {
-        throw new Error('Error al consultar los recordatorios.');
+        throw new Error('Error al consultar las obligaciones.');
       }
       const data = await res.json();
       if (Array.isArray(data)) {
         setReminders(data);
       }
     } catch {
-      setErrorMsg('Error al conectar con el servidor para consultar recordatorios.');
+      setErrorMsg('Error al conectar con el servidor para consultar obligaciones.');
     } finally {
       setLoading(false);
     }
@@ -91,12 +91,12 @@ export default function RecordatoriosPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Error al procesar el pago del recordatorio.');
+        throw new Error(err.error || 'Error al procesar el pago de la obligación.');
       }
 
       setMsg(
-        `Recordatorio "${payingReminder.title}" marcado como pagado.${
-          registerExpense ? ' Egreso registrado en caja.' : ''
+        `Obligación "${payingReminder.title}" marcada como pagada.${
+          registerExpense ? ' Salida registrada en caja.' : ''
         }`
       );
       setPayingReminder(null);
@@ -119,14 +119,14 @@ export default function RecordatoriosPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Error al eliminar el recordatorio.');
+        throw new Error(err.error || 'Error al eliminar la obligación.');
       }
 
-      setMsg(`Recordatorio "${deletingReminder.title}" eliminado correctamente.`);
+      setMsg(`Obligación "${deletingReminder.title}" eliminada correctamente.`);
       setDeletingReminder(null);
       loadReminders();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error al eliminar el recordatorio.');
+      setErrorMsg(err.message || 'Error al eliminar la obligación.');
       setDeletingReminder(null);
     }
   };
@@ -137,6 +137,7 @@ export default function RecordatoriosPage() {
     () => reminders.reduce((acc, r) => acc + (Number(r.amount) || 0), 0),
     [reminders]
   );
+  const obligacionesAlDia = useMemo(() => reminders.filter((r) => r.days_remaining >= 0).length, [reminders]);
   const proximosOVencidos = useMemo(
     () => reminders.filter((r) => r.days_remaining <= 3).length,
     [reminders]
@@ -214,7 +215,7 @@ export default function RecordatoriosPage() {
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-black uppercase m-0">
-            Recordatorios
+            PAGOS RECURRENTES Y OBLIGACIONES
           </h1>
         </div>
         <button
@@ -222,7 +223,7 @@ export default function RecordatoriosPage() {
           onClick={() => setIsCreateReminderOpen(true)}
           className="border border-black bg-black text-white hover:bg-white hover:text-black transition-none py-2 px-4 text-xs font-mono font-bold uppercase tracking-wider rounded-none cursor-pointer self-start sm:self-auto"
         >
-          + Nuevo Recordatorio
+          + Nueva Obligación
         </button>
       </header>
 
@@ -267,14 +268,14 @@ export default function RecordatoriosPage() {
       <section aria-label="Métricas de obligaciones pendientes">
         <div className="border border-black bg-white flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-black font-mono text-xs">
           <div className="p-3 flex-1 flex items-center justify-between sm:justify-start sm:gap-3">
-            <span className="uppercase tracking-wider font-bold">Pendientes:</span>
+            <span className="uppercase tracking-wider font-bold">Obligaciones pendientes:</span>
             <span className="font-bold tabular-nums text-black">
-              {totalPendientes} {totalPendientes === 1 ? 'pago' : 'pagos'}
+              {totalPendientes} {totalPendientes === 1 ? 'obligación' : 'obligaciones'}
             </span>
           </div>
 
           <div className="p-3 flex-1 flex items-center justify-between sm:justify-start sm:gap-3">
-            <span className="uppercase tracking-wider font-bold">Compromiso total:</span>
+            <span className="uppercase tracking-wider font-bold">Total próximo por pagar:</span>
             <span className="font-bold tabular-nums text-black">
               {formatCurrency(compromisoTotal, true)}
             </span>
@@ -285,16 +286,16 @@ export default function RecordatoriosPage() {
               proximosOVencidos > 0 ? 'bg-black text-white' : 'bg-white text-black'
             }`}
           >
-            <span className="uppercase tracking-wider font-bold">Próximos / Vencidos:</span>
+            <span className="uppercase tracking-wider font-bold">Obligaciones al día:</span>
             <span className="font-bold tabular-nums">
-              {proximosOVencidos} {proximosOVencidos === 1 ? 'pago' : 'pagos'}
+              {obligacionesAlDia} {obligacionesAlDia === 1 ? 'obligación' : 'obligaciones'}
             </span>
           </div>
         </div>
       </section>
 
       {/* 2. Barra de herramientas del DataTable (Buscador + Filtros en una sola fila horizontal) */}
-      <section className="space-y-3" aria-label="Controles de búsqueda y filtros de recordatorios">
+      <section className="space-y-3" aria-label="Controles de búsqueda y filtros de obligaciones">
         <div className="border border-black bg-white p-3 flex flex-col md:flex-row items-stretch md:items-center gap-2">
           {/* Buscador de texto */}
           <div className="flex-1 min-w-[200px]">
@@ -307,7 +308,7 @@ export default function RecordatoriosPage() {
                   setCurrentPage(1);
                 }}
                 placeholder="BUSCAR POR CONCEPTO, CATEGORÍA O VALOR..."
-                aria-label="Buscar recordatorios"
+                aria-label="Buscar obligaciones"
                 className="h-9 w-full border border-black bg-white text-black px-3 text-xs font-mono uppercase placeholder:text-black placeholder:opacity-40 focus:outline-none focus:bg-black focus:text-white transition-none box-border"
               />
               {searchQuery && (
@@ -408,13 +409,13 @@ export default function RecordatoriosPage() {
 
         {loading ? (
           <div className="border border-black p-8 text-center bg-white font-mono text-xs uppercase">
-            Cargando recordatorios...
+            Cargando obligaciones...
           </div>
         ) : listaProcesada.length === 0 ? (
           <div className="border border-black p-8 text-center bg-white font-mono text-xs uppercase text-black">
             {hasActiveFilters
-              ? 'No se encontraron recordatorios con los filtros aplicados.'
-              : 'No existen recordatorios pendientes en este momento.'}
+              ? 'No se encontraron obligaciones con los filtros aplicados.'
+              : 'No existen obligaciones pendientes en este momento.'}
           </div>
         ) : (
           <div className="border border-black bg-white">
@@ -492,8 +493,10 @@ export default function RecordatoriosPage() {
                             {formatCategory(r.category)}
                           </span>
                         </td>
-                        <td className="p-3 border-r border-black text-xs font-mono uppercase whitespace-nowrap">
-                          {formatFrequency(r.frequency)}
+                        <td className="p-3 border-r border-black whitespace-nowrap">
+                          <span className="border border-black px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider bg-white text-black inline-block">
+                            {r.frequency === 'UNICO' ? 'ÚNICO' : r.frequency}
+                          </span>
                         </td>
                         <td className="p-3 border-r border-black tabular-nums whitespace-nowrap">
                           {formatDate(r.due_date)}
@@ -524,7 +527,7 @@ export default function RecordatoriosPage() {
                                 setPayingReminder(r);
                                 setRegisterExpense(true);
                               }}
-                              aria-label={`Pagar recordatorio: ${r.title}`}
+                              aria-label={`Pagar obligación: ${r.title}`}
                               className="border border-black bg-black text-white hover:bg-white hover:text-black px-2.5 py-1 text-xs font-bold uppercase tracking-wider transition-none cursor-pointer"
                             >
                               Pagar
@@ -532,7 +535,7 @@ export default function RecordatoriosPage() {
                             <button
                               type="button"
                               onClick={() => setDeletingReminder(r)}
-                              aria-label={`Eliminar recordatorio: ${r.title}`}
+                              aria-label={`Eliminar obligación: ${r.title}`}
                               className="border border-black bg-white text-black hover:bg-black hover:text-white px-2 py-1 text-xs uppercase tracking-wider transition-none cursor-pointer"
                             >
                               Eliminar
@@ -552,7 +555,7 @@ export default function RecordatoriosPage() {
               onPageChange={setCurrentPage}
               totalItems={listaProcesada.length}
               itemsPerPage={itemsPerPage}
-              itemName="recordatorios"
+              itemName="obligaciones"
             />
           </div>
         )}
@@ -573,7 +576,7 @@ export default function RecordatoriosPage() {
           >
             <div className="pb-2 flex items-center justify-between">
               <h3 id="modal-pay-title" className="text-xs font-mono font-bold uppercase tracking-wider text-black m-0">
-                Marcar como pagado
+                Confirmar Pago de Obligación
               </h3>
               <button
                 type="button"
@@ -586,21 +589,38 @@ export default function RecordatoriosPage() {
             </div>
 
             <p className="text-xs font-mono text-black uppercase leading-relaxed">
-              ¿Confirma el pago del compromiso &quot;{payingReminder.title}&quot; por{' '}
-              {formatCurrency(payingReminder.amount)}?
+              ¿Confirma el pago de la obligación &quot;{payingReminder.title}&quot; por{' '}
+              <span className="font-bold tabular-nums">{formatCurrency(payingReminder.amount, true)}</span>?
             </p>
 
             <div className="text-xs font-mono space-y-1">
               <div>
-                Frecuencia: <span className="font-bold">{formatFrequency(payingReminder.frequency)}</span>
+                Frecuencia: <span className="font-bold">{payingReminder.frequency === 'UNICO' ? 'ÚNICO' : payingReminder.frequency}</span>
               </div>
               <div>
                 Categoría: <span className="font-bold">{formatCategory(payingReminder.category)}</span>
               </div>
               <div>
-                Fecha programada: <span className="font-bold">{formatDate(payingReminder.due_date)}</span>
+                Fecha de vencimiento: <span className="font-bold tabular-nums">{formatDate(payingReminder.due_date)}</span>
               </div>
             </div>
+
+            {payingReminder.frequency !== 'UNICO' ? (
+              <div className="border border-black bg-black text-white p-3 font-mono text-xs uppercase leading-relaxed space-y-1">
+                <div className="font-bold tracking-wider">[PAGO RECURRENTE: {payingReminder.frequency}]</div>
+                <p className="m-0">
+                  Al confirmar el pago{registerExpense ? ', se creará la salida en caja y' : ''} el sistema reprogramará automáticamente la fecha para el siguiente ciclo ({payingReminder.frequency === 'SEMANAL' ? '+7 DÍAS' : payingReminder.frequency === 'QUINCENAL' ? '+15 DÍAS' : '+1 MES'}).
+                </p>
+              </div>
+            ) : (
+              <div className="border border-black bg-white text-black p-3 font-mono text-xs uppercase leading-relaxed space-y-1">
+                <div className="font-bold tracking-wider">[PAGO ÚNICO]</div>
+                <p className="m-0">
+                  Al confirmar el pago, la obligación se marcará como completada definitivamente{registerExpense ? ' y se registrará la salida en caja' : ''}.
+                </p>
+              </div>
+            )}
+
 
             <div className="flex items-center gap-2 pt-2">
               <input
@@ -614,7 +634,7 @@ export default function RecordatoriosPage() {
                 htmlFor="pay-register-expense"
                 className="text-xs font-mono font-bold uppercase text-black cursor-pointer select-none"
               >
-                Registrar automáticamente el egreso en caja (salida)
+                Registrar automáticamente la salida en caja
               </label>
             </div>
 
@@ -654,7 +674,7 @@ export default function RecordatoriosPage() {
           >
             <div className="pb-2 flex items-center justify-between">
               <h3 id="modal-del-reminder-title" className="text-xs font-mono font-bold uppercase tracking-wider text-black m-0">
-                Eliminar recordatorio
+                Eliminar obligación
               </h3>
               <button
                 type="button"
@@ -667,7 +687,7 @@ export default function RecordatoriosPage() {
             </div>
 
             <p className="text-xs font-mono text-black uppercase leading-relaxed m-0">
-              ¿Confirma que desea eliminar el recordatorio &quot;{deletingReminder.title}&quot;?
+              ¿Confirma que desea eliminar la obligación &quot;{deletingReminder.title}&quot;?
             </p>
 
             <div className="flex gap-2 justify-end pt-2">
@@ -681,7 +701,7 @@ export default function RecordatoriosPage() {
               <button
                 type="button"
                 onClick={handleDeleteReminder}
-                aria-label={`Confirmar eliminación definitiva del recordatorio ${deletingReminder.title}`}
+                aria-label={`Confirmar eliminación definitiva de la obligación ${deletingReminder.title}`}
                 className="border border-black bg-black text-white hover:bg-white hover:text-black transition-none px-4 py-2 text-xs font-mono font-bold uppercase cursor-pointer"
               >
                 Confirmar eliminación
@@ -697,7 +717,7 @@ export default function RecordatoriosPage() {
         onClose={() => setIsCreateReminderOpen(false)}
         onSuccess={() => {
           loadReminders();
-          setMsg('Recordatorio programado correctamente.');
+          setMsg('Obligación registrada correctamente.');
         }}
       />
     </main>

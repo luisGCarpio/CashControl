@@ -71,7 +71,7 @@ export async function markReminderAsPaid(userId: number, reminderId: number, reg
           userId,
           rem.category || 'SERVICIOS_ARRIENDO',
           Number(rem.amount),
-          `Pago de recordatorio: ${rem.title}`,
+          `Pago de obligación: ${rem.title}`,
         ]
       );
     }
@@ -84,7 +84,7 @@ export async function markReminderAsPaid(userId: number, reminderId: number, reg
       );
     } else {
       await client.query(
-        `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE WHERE id = $1 AND user_id = $2`,
+        `UPDATE reminders SET due_date = (due_date + CASE frequency WHEN 'SEMANAL' THEN INTERVAL '7 days' WHEN 'QUINCENAL' THEN INTERVAL '15 days' ELSE INTERVAL '1 month' END)::DATE, is_completed = FALSE WHERE id = $1 AND user_id = $2`,
         [reminderId, userId]
       );
     }

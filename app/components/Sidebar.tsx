@@ -75,7 +75,7 @@ export default function Sidebar() {
       isActive: pathname === '/productos' || pathname.startsWith('/productos/'),
     },
     {
-      label: 'RECORDATORIOS',
+      label: 'PAGOS RECURRENTES',
       href: '/recordatorios',
       isActive: pathname === '/recordatorios' || pathname.startsWith('/recordatorios/'),
     },

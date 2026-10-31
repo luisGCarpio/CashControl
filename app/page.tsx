@@ -364,7 +364,7 @@ export default function DashboardPage() {
                 href="/recordatorios"
                 className="font-mono text-xs font-bold uppercase underline text-black hover:bg-black hover:text-white hover:no-underline px-1 transition-none"
               >
-                [VER TODOS LOS RECORDATORIOS →]
+                [VER PAGOS RECURRENTES →]
               </Link>
             </div>
 
@@ -465,7 +465,7 @@ export default function DashboardPage() {
                 href="/recordatorios"
                 className="flex items-center justify-between border border-black bg-white hover:bg-black hover:text-white transition-none p-4 text-xs font-mono font-bold uppercase tracking-wider cursor-pointer no-underline text-black"
               >
-                <span>Control de recordatorios</span>
+                <span>Pagos recurrentes y obligaciones</span>
                 <span className="font-mono">→</span>
               </Link>
             </div>

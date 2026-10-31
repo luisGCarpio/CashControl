@@ -295,7 +295,7 @@ export async function getBusinessAlerts(userId: number): Promise<AlertsResponseD
         scope: 'LIQUIDEZ',
         title: 'Riesgo Crítico de Liquidez: Obligaciones superan caja',
         detail: `Tienes ${detailSummary} por $${formatCurrency(totalObligations)}, superando tu saldo disponible en caja ($${formatCurrency(availableCash)}). Déficit proyectado: $${formatCurrency(deficitAmount)}.`,
-        actionLabel: 'Ver Pagos',
+        actionLabel: 'Ver Pagos Recurrentes',
         actionHref: '/recordatorios',
       });
     } else {
@@ -305,7 +305,7 @@ export async function getBusinessAlerts(userId: number): Promise<AlertsResponseD
         scope: 'LIQUIDEZ',
         title: 'Obligaciones de pago próximas o vencidas',
         detail: `Tienes ${detailSummary} por un total de $${formatCurrency(totalObligations)}. Tu caja actual disponible es de $${formatCurrency(availableCash)}.`,
-        actionLabel: 'Ver Pagos',
+        actionLabel: 'Ver Pagos Recurrentes',
         actionHref: '/recordatorios',
       });
     }
